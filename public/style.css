@@ -1,0 +1,472 @@
+/* ─── Reset & Base ─────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+[hidden] { display: none !important; }
+
+:root {
+  --sidebar-width: 320px;
+  --color-bg: #1a1a2e;
+  --color-surface: #16213e;
+  --color-surface2: #0f3460;
+  --color-accent: #e94560;
+  --color-accent2: #533483;
+  --color-text: #e0e0e0;
+  --color-text-muted: #888;
+  --color-border: rgba(255,255,255,0.08);
+  --color-success: #4caf50;
+  --color-warning: #ff9800;
+  --radius: 8px;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+html, body {
+  height: 100%;
+  font-family: var(--font);
+  background: var(--color-bg);
+  color: var(--color-text);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Service Warning Bar ───────────────────────────────────────────────────── */
+#service-warning {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 16px;
+  background: #7a4500;
+  border-bottom: 1px solid #f59e0b;
+  color: #fde68a;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  z-index: 1000;
+}
+
+/* ─── Layout ────────────────────────────────────────────────────────────────── */
+#app {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  overflow-y: auto;
+  z-index: 10;
+}
+
+#map {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ─── Sidebar Header ────────────────────────────────────────────────────────── */
+#sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+#logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.bus-icon {
+  font-size: 22px;
+}
+
+#status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+  transition: background 0.3s;
+}
+#status-dot.green { background: var(--color-success); }
+#status-dot.red   { background: var(--color-accent); }
+#status-dot.pulse {
+  animation: pulse 1.5s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+/* ─── Tabs ──────────────────────────────────────────────────────────────────── */
+#tabs {
+  display: flex;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 10px 4px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+.tab-btn:hover { color: var(--color-text); }
+.tab-btn.active {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
+/* ─── Tab Panels ────────────────────────────────────────────────────────────── */
+.tab-panel {
+  display: none;
+  flex-direction: column;
+  flex: 1;
+}
+.tab-panel.active {
+  display: flex;
+}
+
+/* ─── Sections ──────────────────────────────────────────────────────────────── */
+.panel-section {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+.panel-section:last-child {
+  border-bottom: none;
+}
+
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-bottom: 10px;
+}
+
+.muted-text {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-bottom: 8px;
+}
+
+/* ─── Bus List ──────────────────────────────────────────────────────────────── */
+.empty-state {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.bus-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.bus-item:last-child { border-bottom: none; }
+.bus-item:hover { opacity: 0.8; }
+
+.bus-badge {
+  background: var(--color-accent);
+  color: white;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.bus-info {
+  flex: 1;
+  min-width: 0;
+}
+.bus-label {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bus-meta {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+/* ─── Next Buses / Commute ──────────────────────────────────────────────────── */
+.direction-badge {
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: var(--color-surface2);
+  color: var(--color-text-muted);
+}
+.direction-badge.morning { background: rgba(233,69,96,0.15); color: #e94560; }
+.direction-badge.evening { background: rgba(83,52,131,0.3); color: #a78bda; }
+
+.next-bus-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.next-bus-item:last-child { border-bottom: none; }
+
+.next-bus-time {
+  text-align: right;
+  min-width: 60px;
+}
+.next-bus-time .time {
+  font-size: 18px;
+  font-weight: 700;
+}
+.next-bus-time .delay {
+  font-size: 11px;
+  margin-top: 1px;
+}
+.delay.late { color: var(--color-accent); }
+.delay.early { color: var(--color-success); }
+.delay.ontime { color: var(--color-text-muted); }
+
+.next-bus-countdown {
+  flex: 1;
+}
+.countdown-value {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+.countdown-unit {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-left: 2px;
+}
+.countdown-imminent { color: var(--color-accent); animation: pulse 1s infinite; }
+.countdown-soon     { color: var(--color-warning); }
+.countdown-normal   { color: var(--color-text); }
+
+.trip-headsign {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+/* ─── Schedule List ─────────────────────────────────────────────────────────── */
+.schedule-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--color-border);
+}
+.schedule-item:last-child { border-bottom: none; }
+.schedule-item.past { opacity: 0.35; }
+.schedule-item .sched-time { font-weight: 600; }
+.schedule-item .sched-headsign { color: var(--color-text-muted); font-size: 11px; }
+
+/* ─── Settings Form ─────────────────────────────────────────────────────────── */
+.field-label {
+  display: block;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-bottom: 6px;
+  margin-top: 10px;
+}
+
+.stop-select, input[type="time"], input[type="number"] {
+  width: 100%;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  padding: 8px 10px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.stop-select:focus, input:focus {
+  border-color: var(--color-accent);
+}
+.stop-select option {
+  background: var(--color-bg);
+}
+
+.time-range {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.toggle-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent);
+}
+
+.inline-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.inline-field input[type="number"] {
+  width: 70px;
+}
+.field-suffix {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+/* ─── Buttons ───────────────────────────────────────────────────────────────── */
+.btn-primary {
+  width: 100%;
+  padding: 10px;
+  background: var(--color-accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.btn-primary:hover { opacity: 0.85; }
+
+.btn-secondary {
+  width: 100%;
+  padding: 8px;
+  background: var(--color-surface2);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-top: 8px;
+}
+.btn-secondary:hover { background: var(--color-accent2); }
+
+.save-indicator {
+  text-align: center;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+.debug-link {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  text-decoration: none;
+}
+.debug-link:hover { color: var(--color-accent); }
+
+/* ─── Leaflet overrides ─────────────────────────────────────────────────────── */
+.leaflet-popup-content-wrapper {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+.leaflet-popup-tip {
+  background: var(--color-surface);
+}
+.leaflet-popup-content {
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.leaflet-popup-content strong {
+  color: var(--color-accent);
+}
+
+.bus-marker-wrap {
+  position: relative;
+  width: 28px;
+  height: 28px;
+}
+
+.bus-age-badge {
+  position: absolute;
+  top: -6px;
+  right: -14px;
+  background: rgba(0,0,0,0.72);
+  color: var(--color-success);
+  font-size: 9px;
+  font-weight: 600;
+  font-family: var(--font);
+  padding: 1px 3px;
+  border-radius: 3px;
+  white-space: nowrap;
+  line-height: 1.4;
+  pointer-events: none;
+}
+.bus-age-badge.stale      { color: var(--color-warning); }
+.bus-age-badge.very-stale { color: #f44336; }
+
+.bus-marker-icon {
+  font-size: 22px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5));
+  transition: transform 0.3s;
+}
+
+.stop-marker {
+  width: 10px;
+  height: 10px;
+  background: #aaa;
+  border: 2px solid white;
+  border-radius: 50%;
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────────────────────────── */
+#sidebar::-webkit-scrollbar { width: 4px; }
+#sidebar::-webkit-scrollbar-track { background: transparent; }
+#sidebar::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
+
+/* ─── Responsive ────────────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  #app { flex-direction: column-reverse; }
+  #sidebar { width: 100%; max-height: 50vh; }
+  #map { flex: 1; }
+}

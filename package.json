@@ -1,0 +1,17 @@
+{
+  "name": "returntowork",
+  "version": "1.0.0",
+  "description": "Halifax Transit Route 194 real-time bus tracker",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.12",
+    "express": "^4.19.2",
+    "gtfs-realtime-bindings": "^1.1.1",
+    "node-fetch": "^3.3.2"
+  }
+}
