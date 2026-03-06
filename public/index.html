@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Route 194 Bus Tracker</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="service-warning" hidden>
+    <span>⚠</span>
+    <span id="service-warning-text"></span>
+  </div>
+
+  <div id="app">
+    <!-- Sidebar -->
+    <div id="sidebar">
+      <div id="sidebar-header">
+        <div id="logo">
+          <span class="bus-icon">🚌</span>
+          <span>Route 194</span>
+        </div>
+        <div id="status-dot" title="Connection status"></div>
+      </div>
+
+      <!-- Tab Navigation -->
+      <nav id="tabs">
+        <button class="tab-btn active" data-tab="map">Map</button>
+        <button class="tab-btn" data-tab="commute">Commute</button>
+        <button class="tab-btn" data-tab="settings">Settings</button>
+      </nav>
+
+      <!-- Tab: Map Controls -->
+      <div id="tab-map" class="tab-panel active">
+        <div class="panel-section">
+          <div class="section-label">Live Buses</div>
+          <div id="bus-list">
+            <div class="empty-state">Loading bus positions...</div>
+          </div>
+        </div>
+        <div class="panel-section">
+          <div id="last-update" class="muted-text">–</div>
+          <button id="refresh-btn" class="btn-secondary">Refresh Now</button>
+        </div>
+      </div>
+
+      <!-- Tab: Commute -->
+      <div id="tab-commute" class="tab-panel">
+        <div id="commute-direction-indicator" class="direction-badge"></div>
+
+        <div id="next-buses-section" class="panel-section">
+          <div class="section-label">Next Buses</div>
+          <div id="next-buses">
+            <div class="empty-state">Configure a stop in Settings to see upcoming buses.</div>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-label">All Today's Trips</div>
+          <div id="schedule-list">
+            <div class="empty-state">–</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Settings -->
+      <div id="tab-settings" class="tab-panel">
+        <form id="settings-form">
+          <div class="panel-section">
+            <div class="section-label">Route</div>
+            <select id="route-select" class="stop-select">
+              <option value="">Loading routes…</option>
+            </select>
+          </div>
+
+          <div class="panel-section">
+            <div class="section-label">Morning Commute</div>
+            <label class="field-label">Boarding Stop</label>
+            <select id="morning-stop" class="stop-select">
+              <option value="">Loading stops…</option>
+            </select>
+
+            <div class="time-range">
+              <div>
+                <label class="field-label">Window Start</label>
+                <input type="time" id="morning-start" value="07:00" />
+              </div>
+              <div>
+                <label class="field-label">Window End</label>
+                <input type="time" id="morning-end" value="09:00" />
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-section">
+            <div class="section-label">Evening Commute</div>
+            <label class="field-label">Boarding Stop</label>
+            <select id="evening-stop" class="stop-select">
+              <option value="">Loading stops…</option>
+            </select>
+
+            <div class="time-range">
+              <div>
+                <label class="field-label">Window Start</label>
+                <input type="time" id="evening-start" value="16:00" />
+              </div>
+              <div>
+                <label class="field-label">Window End</label>
+                <input type="time" id="evening-end" value="18:30" />
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-section">
+            <div class="section-label">Notifications</div>
+            <label class="toggle-label">
+              <input type="checkbox" id="notif-enable" />
+              <span>Enable browser notifications</span>
+            </label>
+            <label class="field-label" style="margin-top: 12px;">Notify me when bus is</label>
+            <div class="inline-field">
+              <input type="number" id="notif-minutes" value="5" min="1" max="30" />
+              <span class="field-suffix">minutes away</span>
+            </div>
+          </div>
+
+          <div class="panel-section">
+            <button type="submit" class="btn-primary">Save Settings</button>
+            <div id="settings-saved" class="save-indicator" hidden>Saved!</div>
+          </div>
+        </form>
+
+        <div class="panel-section">
+          <div class="section-label">Debug</div>
+          <button id="test-notif-btn" class="btn-secondary">Test Notification</button>
+          <a href="/api/status" target="_blank" class="debug-link">API Status</a>
+          <a href="/api/vehicles" target="_blank" class="debug-link">Vehicle Feed</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Map -->
+    <div id="map"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
