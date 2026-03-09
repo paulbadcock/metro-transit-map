@@ -2,7 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Commands
+## Branches
+
+- `main` — Node.js/Express version (`server.js`). Run locally with `npm start` or `npm run dev`.
+- `feature/docker` — Adds Docker/docker-compose for self-hosted deployment. See below.
+
+---
+
+## main branch — Node.js
 
 ```bash
 npm start          # Run server (node server.js)
@@ -12,6 +19,26 @@ npm run dev        # Run with auto-restart on file changes (node --watch)
 No build step, no test suite, no linter configured. The server starts on http://localhost:3000.
 
 On first start (or when GTFS data is >24h old), `server.js` downloads `google_transit.zip` from Halifax Transit and extracts five files into `data/gtfs/`. Subsequent starts skip the download.
+
+---
+
+## feature/docker branch — Docker
+
+```bash
+docker compose up --build      # Build image and start container
+docker compose up -d           # Run in background
+docker compose down            # Stop and remove container
+```
+
+GTFS data is stored in the `gtfs-data` named volume and persists across restarts. On first start the container downloads GTFS automatically — this takes ~10s and requires internet access.
+
+To run on a different host port:
+
+```bash
+PORT=8080 docker compose up -d
+```
+
+The container runs as a non-root user (`appuser`). No other configuration is required.
 
 ## Architecture
 

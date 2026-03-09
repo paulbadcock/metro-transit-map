@@ -1,0 +1,13 @@
+services:
+  app:
+    build: .
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - gtfs-data:/app/data/gtfs
+    environment:
+      - PORT=3000
+    restart: unless-stopped
+
+volumes:
+  gtfs-data:
