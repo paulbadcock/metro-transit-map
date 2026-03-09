@@ -544,9 +544,13 @@ function updateScheduleList(stopId) {
 }
 
 // ─── Notifications ────────────────────────────────────────────────────────────
+function notificationsSupported() {
+  return typeof Notification !== "undefined" && Notification.permission !== undefined;
+}
+
 function checkNotifications(upcoming, stopId) {
   if (!settings.notifEnable) return;
-  if (Notification.permission !== "granted") return;
+  if (!notificationsSupported() || Notification.permission !== "granted") return;
 
   const threshold = settings.notifMinutes;
   for (const s of upcoming) {
@@ -570,17 +574,24 @@ function checkNotifications(upcoming, stopId) {
 }
 
 function fireNotification(title, body) {
-  if (Notification.permission !== "granted") return;
-  new Notification(title, {
-    body,
-    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🚌</text></svg>',
-    tag: "rt194-" + Date.now(),
-  });
-  console.log("[BusTracker] Notification fired:", title, body);
+  try {
+    new Notification(title, {
+      body,
+      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🚌</text></svg>',
+      tag: "rt194-" + Date.now(),
+    });
+    console.log("[BusTracker] Notification fired:", title, body);
+  } catch (e) {
+    console.warn("[BusTracker] Notification failed:", e.message);
+  }
 }
 
 // Exposed globally for testing
 window.testNotification = () => {
+  if (!notificationsSupported()) {
+    alert("Notifications are not supported in this browser.\nOn Safari, you need to add this page to the Dock as a web app.");
+    return;
+  }
   Notification.requestPermission().then((perm) => {
     if (perm === "granted") {
       fireNotification(
