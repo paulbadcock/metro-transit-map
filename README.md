@@ -1,10 +1,10 @@
-# Route 194 Bus Tracker
+# Bus Tracker
 
-Real-time tracker for Halifax Transit Route 194 (West Bedford Downtown Express). Shows live bus positions on a map, upcoming departures at your stop with delay information, and fires browser notifications when your bus is approaching.
+Real-time tracker for Halifax Transit Routes. Shows live bus positions on a map, upcoming departures at your stop with delay information, and fires browser notifications when your bus is approaching.
 
 ## Features
 
-- Live map of route 194 buses updated every 15 seconds
+- Live map of route buses updated every 15 seconds
 - Route polyline following the actual road geometry (via GTFS shapes data)
 - Commute panel showing next 3 buses with countdowns and delay indicators
 - Warning bar when the route is not in service
@@ -74,9 +74,9 @@ The backend proxies Halifax Transit's GTFS-Realtime protobuf feeds (which can't 
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/vehicles` | Live bus positions for route 194 (cached 15s) |
-| `GET /api/trip-updates` | Stop-level delay data for route 194 (cached 30s) |
-| `GET /api/stops` | All 43 stops served by route 194 |
+| `GET /api/vehicles` | Live bus positions for route (cached 15s) |
+| `GET /api/trip-updates` | Stop-level delay data for route (cached 30s) |
+| `GET /api/stops` | All 43 stops served by route |
 | `GET /api/schedule?stop_id=X` | Today's scheduled departures at a stop |
 | `GET /api/route-stops` | Stops and shape coordinates grouped by direction |
 | `GET /api/service-status` | Whether the route is currently in service |
@@ -93,7 +93,7 @@ All feeds are public and require no authentication.
 | Trip updates | `https://gtfs.halifax.ca/realtime/TripUpdate/TripUpdates.pb` |
 | Alerts | `https://gtfs.halifax.ca/realtime/Alert/Alerts.pb` |
 
-Route 194 has 8 scheduled trips per day serving 43 stops. The `route_id` in the GTFS feed is `"194"`.
+The `route_id` in the GTFS feed is `"194"`.
 
 ## How Notifications Work
 
@@ -112,27 +112,7 @@ Currently designed to run locally. Three options for making it publicly accessib
 ### Cloudflare Tunnel (no code changes)
 Run the Node.js server as-is and expose it via `cloudflared tunnel`. Cloudflare handles HTTPS and your domain without opening firewall ports.
 
-### Pages + external Node host
-Deploy `public/` to Cloudflare Pages and the Node server to Fly.io or Railway. Update the API base URL in `app.js` and add a CORS header in `server.js`.
-
-### Cloudflare Pages + Workers (planned)
-Full Cloudflare-native rewrite — no server to maintain. See roadmap below.
-
 ## Roadmap
-
-### Cloudflare Pages + Workers migration
-Migrate the backend from Node.js/Express to Cloudflare Workers so there is no server to run or maintain:
-
-- Static files (`public/`) → Cloudflare Pages (no changes needed)
-- Express API routes → Workers functions under `functions/api/`
-- `data/gtfs/` on disk → Cloudflare KV (store pre-parsed JSON, not raw CSV)
-- In-memory response cache → Workers Cache API
-- Daily GTFS refresh → Cron Trigger (scheduled Worker)
-
-Key rewrite work:
-- Replace `adm-zip` + `fs` with `fflate` + KV reads/writes
-- Add `nodejs_compat` flag for `gtfs-realtime-bindings`
-- Pre-process `stop_times.txt` into KV at deploy time to avoid CSV parsing on cold start
 
 ### iOS push notifications
 Enable notifications on a locked iPhone via server-initiated Web Push. The current client-polling approach stops working as soon as iOS suspends the tab.

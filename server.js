@@ -8,7 +8,7 @@ import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 const GTFS_STATIC_URL = 'http://gtfs.halifax.ca/static/google_transit.zip';
 const GTFS_DIR = join(__dirname, 'data', 'gtfs');
