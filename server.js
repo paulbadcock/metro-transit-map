@@ -10,7 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const GTFS_STATIC_URL = 'http://gtfs.halifax.ca/static/google_transit.zip';
+const GTFS_STATIC_URL = 'https://gtfs.halifax.ca/static/google_transit.zip';
 const GTFS_DIR = join(__dirname, 'data', 'gtfs');
 
 const VEHICLE_POSITIONS_URL = 'https://gtfs.halifax.ca/realtime/Vehicle/VehiclePositions.pb';
@@ -308,7 +308,7 @@ app.get('/api/vehicles', async (req, res) => {
     res.json(vehicles);
   } catch (err) {
     console.error('Error fetching vehicles:', err.message);
-    res.status(502).json({ error: err.message });
+    res.status(502).json({ error: 'Failed to fetch vehicle positions' });
   }
 });
 
@@ -344,7 +344,7 @@ app.get('/api/trip-updates', async (req, res) => {
     res.json(updates);
   } catch (err) {
     console.error('Error fetching trip updates:', err.message);
-    res.status(502).json({ error: err.message });
+    res.status(502).json({ error: 'Failed to fetch trip updates' });
   }
 });
 

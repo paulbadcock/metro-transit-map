@@ -86,6 +86,17 @@ function makeStopIcon() {
   });
 }
 
+// ─── Security Utilities ───────────────────────────────────────────────────────
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ─── Time Utilities ───────────────────────────────────────────────────────────
 function nowInHalifax() {
   return new Date(new Date().toLocaleString("en-US", { timeZone: HALIFAX_TZ }));
@@ -196,9 +207,9 @@ async function fetchRoutes() {
   sel.innerHTML = routes
     .map((r) => {
       const label = r.route_long_name
-        ? `${r.route_short_name} \u2014 ${r.route_long_name}`
-        : r.route_short_name;
-      return `<option value="${r.route_id}">${label}</option>`;
+        ? `${escapeHtml(r.route_short_name)} \u2014 ${escapeHtml(r.route_long_name)}`
+        : escapeHtml(r.route_short_name);
+      return `<option value="${escapeHtml(r.route_id)}">${label}</option>`;
     })
     .join("");
   sel.value = currentRouteId();
@@ -257,11 +268,11 @@ function buildBusPopup(v) {
   const ageText =
     ageS != null ? ` <span style="opacity:0.65">(${ageS}s ago)</span>` : "";
   return `
-    <strong>Route ${currentRouteId()}</strong><br>
-    Bus #${v.label || v.id}<br>
-    Trip: ${v.trip_id || "–"}<br>
-    Speed: ${speed}<br>
-    Updated: ${ts}${ageText}<br>
+    <strong>Route ${escapeHtml(currentRouteId())}</strong><br>
+    Bus #${escapeHtml(v.label || v.id)}<br>
+    Trip: ${escapeHtml(v.trip_id || "–")}<br>
+    Speed: ${escapeHtml(speed)}<br>
+    Updated: ${escapeHtml(ts)}${ageText}<br>
     <span style="opacity:0.65">Refreshing every 15s</span>
   `;
 }
@@ -283,7 +294,7 @@ function drawStopMarkers() {
       icon: makeStopIcon(),
       title: s.stop_name,
     })
-      .bindPopup(`<strong>${s.stop_name}</strong><br>Stop #${s.stop_id}`)
+      .bindPopup(`<strong>${escapeHtml(s.stop_name)}</strong><br>Stop #${escapeHtml(s.stop_id)}`)
       .addTo(map);
     state.stopMarkers.push(m);
   }
@@ -331,11 +342,11 @@ function updateBusList() {
   el.innerHTML = state.vehicles
     .map(
       (v) => `
-    <div class="bus-item" data-bus-id="${v.id}" onclick="panToBus('${v.id}')">
-      <div class="bus-badge">${currentRouteId()}</div>
+    <div class="bus-item" data-bus-id="${escapeHtml(v.id)}" onclick="panToBus('${escapeHtml(v.id)}')">
+      <div class="bus-badge">${escapeHtml(currentRouteId())}</div>
       <div class="bus-info">
-        <div class="bus-label">Bus #${v.label || v.id}</div>
-        <div class="bus-meta">${v.trip_id ? `Trip ${v.trip_id}` : "No trip"}</div>
+        <div class="bus-label">Bus #${escapeHtml(v.label || v.id)}</div>
+        <div class="bus-meta">${v.trip_id ? `Trip ${escapeHtml(v.trip_id)}` : "No trip"}</div>
       </div>
     </div>
   `,
@@ -509,7 +520,7 @@ function updateNextBuses(stopId) {
         <div class="next-bus-countdown">
           <span class="countdown-value ${countdownClass}">${formatCountdown(ma)}</span>
           <span class="countdown-unit">min</span>
-          <div class="trip-headsign">${s.trip_headsign || ""}</div>
+          <div class="trip-headsign">${escapeHtml(s.trip_headsign || "")}</div>
         </div>
       </div>
     `;
@@ -536,7 +547,7 @@ function updateScheduleList(stopId) {
       return `
       <div class="schedule-item ${past ? "past" : ""}">
         <span class="sched-time">${formatTime12(s.departure_time)}</span>
-        <span class="sched-headsign">${s.trip_headsign || ""}</span>
+        <span class="sched-headsign">${escapeHtml(s.trip_headsign || "")}</span>
       </div>
     `;
     })
@@ -612,7 +623,7 @@ function populateStopDropdowns() {
   const opts = state.stops
     .map(
       (s) =>
-        `<option value="${s.stop_id}">${s.stop_name} (${s.stop_id})</option>`,
+        `<option value="${escapeHtml(s.stop_id)}">${escapeHtml(s.stop_name)} (${escapeHtml(s.stop_id)})</option>`,
     )
     .join("");
   const placeholder = '<option value="">— Select a stop —</option>';
