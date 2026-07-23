@@ -60,22 +60,51 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 }).addTo(map);
 
 // ─── Bus Icon ─────────────────────────────────────────────────────────────────
-function makeBusIcon(bearing, timestamp) {
+function makeBusIcon(bearing, timestamp, delayMin) {
   const rotation =
     bearing != null ? `transform:rotate(${bearing + 90}deg)` : "";
-  let badge = "";
+  let ageBadge = "";
   if (timestamp) {
     const ageS = Math.round(Date.now() / 1000 - timestamp);
     const ageClass = ageS < 30 ? "" : ageS < 90 ? " stale" : " very-stale";
-    badge = `<div class="bus-age-badge${ageClass}">${ageS}s</div>`;
+    ageBadge = `<div class="bus-age-badge${ageClass}">${ageS}s</div>`;
   }
+
+  let iconClass = "bus-marker-icon";
+  let delayBadge = "";
+  if (delayMin != null) {
+    if (delayMin > 1) {
+      const severe = delayMin >= 5 ? " severe" : "";
+      iconClass += ` delay-late${severe}`;
+      delayBadge = `<div class="bus-delay-badge late">+${delayMin}m</div>`;
+    } else if (delayMin < -1) {
+      delayBadge = `<div class="bus-delay-badge early">${delayMin}m</div>`;
+    }
+  }
+
   return L.divIcon({
     className: "",
-    html: `<div class="bus-marker-wrap"><div class="bus-marker-icon" style="${rotation}">🚌</div>${badge}</div>`,
+    html: `<div class="bus-marker-wrap"><div class="${iconClass}" style="${rotation}">🚌</div>${ageBadge}${delayBadge}</div>`,
     iconSize: [28, 28],
     iconAnchor: [14, 14],
     popupAnchor: [0, -14],
   });
+}
+
+// Returns the current delay (minutes) for a trip from the most recently
+// arriving stop-time update, or null if no real-time data is available yet.
+function getTripDelayMinutes(tripId) {
+  if (!tripId) return null;
+  let best = null;
+  for (const u of state.allTripUpdates) {
+    if (u.trip_id !== tripId) continue;
+    if (best === null || (u.stop_sequence ?? Infinity) < (best.stop_sequence ?? Infinity)) {
+      best = u;
+    }
+  }
+  if (!best) return null;
+  const delaySeconds = best.departure_delay ?? best.arrival_delay;
+  return delaySeconds != null ? Math.round(delaySeconds / 60) : null;
 }
 
 function makeStopIcon() {
@@ -222,19 +251,20 @@ function updateVehicleMarkers() {
   for (const v of state.vehicles) {
     if (!v.lat || !v.lon) continue;
     seenIds.add(v.id);
+    const delayMin = getTripDelayMinutes(v.trip_id);
 
     if (state.vehicleMarkers.has(v.id)) {
       const marker = state.vehicleMarkers.get(v.id);
       marker.setLatLng([v.lat, v.lon]);
-      marker.setIcon(makeBusIcon(v.bearing, v.timestamp));
-      marker.getPopup()?.setContent(buildBusPopup(v));
+      marker.setIcon(makeBusIcon(v.bearing, v.timestamp, delayMin));
+      marker.getPopup()?.setContent(buildBusPopup(v, delayMin));
     } else {
       const marker = L.marker([v.lat, v.lon], {
-        icon: makeBusIcon(v.bearing, v.timestamp),
+        icon: makeBusIcon(v.bearing, v.timestamp, delayMin),
         title: `Bus ${v.label || v.id}`,
         zIndexOffset: 100,
       })
-        .bindPopup(buildBusPopup(v))
+        .bindPopup(buildBusPopup(v, delayMin))
         .addTo(map);
 
       marker.on("click", () => {
@@ -255,7 +285,7 @@ function updateVehicleMarkers() {
   }
 }
 
-function buildBusPopup(v) {
+function buildBusPopup(v, delayMin) {
   const speed = v.speed != null ? `${Math.round(v.speed * 3.6)} km/h` : "–";
   const ts = v.timestamp
     ? new Date(v.timestamp * 1000).toLocaleTimeString("en-CA", {
@@ -267,12 +297,26 @@ function buildBusPopup(v) {
   const ageS = v.timestamp ? Math.round(Date.now() / 1000 - v.timestamp) : null;
   const ageText =
     ageS != null ? ` <span style="opacity:0.65">(${ageS}s ago)</span>` : "";
+
+  let delayLine = "";
+  if (delayMin != null) {
+    const cls = delayMin > 1 ? "late" : delayMin < -1 ? "early" : "ontime";
+    const text =
+      delayMin > 1
+        ? `+${delayMin} min late`
+        : delayMin < -1
+          ? `${delayMin} min early`
+          : "On time";
+    delayLine = `<div class="delay ${cls}">${text}</div>`;
+  }
+
   return `
     <strong>Route ${escapeHtml(currentRouteId())}</strong><br>
     Bus #${escapeHtml(v.label || v.id)}<br>
     Trip: ${escapeHtml(v.trip_id || "–")}<br>
     Speed: ${escapeHtml(speed)}<br>
     Updated: ${escapeHtml(ts)}${ageText}<br>
+    ${delayLine}
     <span style="opacity:0.65">Refreshing every 15s</span>
   `;
 }
@@ -789,6 +833,7 @@ async function pollTripUpdates() {
   try {
     await fetchTripUpdates();
     updateCommutePanel();
+    updateVehicleMarkers();
   } catch (err) {
     console.error("[BusTracker] Trip update fetch error:", err);
   }

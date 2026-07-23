@@ -450,6 +450,29 @@ html, body {
   filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5));
   transition: transform 0.3s;
 }
+.bus-marker-icon.delay-late {
+  filter: drop-shadow(0 0 4px var(--color-accent)) drop-shadow(0 2px 3px rgba(0,0,0,0.5));
+}
+.bus-marker-icon.delay-late.severe {
+  animation: pulse 1.2s infinite;
+}
+
+.bus-delay-badge {
+  position: absolute;
+  bottom: -6px;
+  left: -14px;
+  background: rgba(0,0,0,0.72);
+  font-size: 9px;
+  font-weight: 600;
+  font-family: var(--font);
+  padding: 1px 3px;
+  border-radius: 3px;
+  white-space: nowrap;
+  line-height: 1.4;
+  pointer-events: none;
+}
+.bus-delay-badge.late  { color: var(--color-accent); }
+.bus-delay-badge.early { color: var(--color-success); }
 
 .stop-marker {
   width: 10px;
