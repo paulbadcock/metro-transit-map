@@ -13,6 +13,6 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
     && chown -R appuser:appgroup /app/data
 USER appuser
 
-EXPOSE 3000
+EXPOSE 4040
 
 CMD ["node", "server.js"]
