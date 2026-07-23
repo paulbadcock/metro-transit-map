@@ -1,12 +1,15 @@
 services:
   app:
+    container_name: busmap
     build: .
     ports:
-      - "${PORT:-3000}:3000"
+      - "${PORT:-4040}:4040"
     volumes:
       - gtfs-data:/app/data/gtfs
     environment:
-      - PORT=3000
+      - PORT=4040
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
     restart: unless-stopped
 
 volumes:
