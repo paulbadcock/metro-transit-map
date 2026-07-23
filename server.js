@@ -394,31 +394,55 @@ app.get('/api/route-stops', (req, res) => {
   const routeId = req.query.route_id || '194';
   const { tripIds } = getRouteInfo(routeId);
 
-  const byDirection = {};
+  // Group trips by direction, and tally how many trips use each shape_id —
+  // some routes have rare detour/short-turn variants alongside the main
+  // shape, and we only want the one most trips actually run.
+  const tripsByDir = {};
+  const shapeCountsByDir = {};
   for (const tripId of tripIds) {
     const trip = gtfsData.trips.get(tripId);
     if (!trip) continue;
     const dir = trip.direction_id || '0';
-    if (!byDirection[dir]) {
-      byDirection[dir] = {
-        direction_id: parseInt(dir),
-        trip_headsign: trip.trip_headsign,
-        stops: [],
-        shape: [],
-      };
+    (tripsByDir[dir] ??= []).push(trip);
+    if (trip.shape_id) {
+      const counts = (shapeCountsByDir[dir] ??= {});
+      counts[trip.shape_id] = (counts[trip.shape_id] || 0) + 1;
     }
-    if (byDirection[dir].stops.length === 0) {
-      const sts = [...(gtfsData.stopTimesByTrip.get(tripId) || [])];
-      sts.sort((a, b) => a.stop_sequence - b.stop_sequence);
-      byDirection[dir].stops = sts.map(st => {
-        const s = gtfsData.stops.get(st.stop_id);
-        return s ? { ...s, sequence: st.stop_sequence } : null;
-      }).filter(Boolean);
+  }
 
-      if (trip.shape_id && gtfsData.shapes.has(trip.shape_id)) {
-        byDirection[dir].shape = gtfsData.shapes.get(trip.shape_id);
+  const byDirection = {};
+  for (const [dir, dirTrips] of Object.entries(tripsByDir)) {
+    const counts = shapeCountsByDir[dir] || {};
+    const canonicalShapeId = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
+
+    // Among trips running the canonical shape, prefer the one with the most
+    // stops so a truncated variant doesn't win by tie-breaking on order.
+    let bestTrip = null;
+    let bestStopCount = -1;
+    for (const trip of dirTrips) {
+      if (canonicalShapeId && trip.shape_id !== canonicalShapeId) continue;
+      const stopCount = (gtfsData.stopTimesByTrip.get(trip.trip_id) || []).length;
+      if (stopCount > bestStopCount) {
+        bestStopCount = stopCount;
+        bestTrip = trip;
       }
     }
+    if (!bestTrip) bestTrip = dirTrips[0];
+
+    const sts = [...(gtfsData.stopTimesByTrip.get(bestTrip.trip_id) || [])];
+    sts.sort((a, b) => a.stop_sequence - b.stop_sequence);
+
+    byDirection[dir] = {
+      direction_id: parseInt(dir),
+      trip_headsign: bestTrip.trip_headsign,
+      stops: sts.map(st => {
+        const s = gtfsData.stops.get(st.stop_id);
+        return s ? { ...s, sequence: st.stop_sequence } : null;
+      }).filter(Boolean),
+      shape: (bestTrip.shape_id && gtfsData.shapes.has(bestTrip.shape_id))
+        ? gtfsData.shapes.get(bestTrip.shape_id)
+        : [],
+    };
   }
 
   res.json(Object.values(byDirection));
