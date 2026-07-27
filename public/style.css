@@ -570,6 +570,27 @@ html, body {
   white-space: nowrap;
 }
 
+/* ─── Direction Legend ──────────────────────────────────────────────────────── */
+.direction-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.direction-legend .swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+.direction-legend .swatch.outbound { background: var(--color-dir-outbound); }
+.direction-legend .swatch.inbound  { background: var(--color-dir-inbound); }
+.direction-legend .swatch.shared   { background: var(--color-dir-shared); }
+
 /* ─── Scrollbar ─────────────────────────────────────────────────────────────── */
 #sidebar::-webkit-scrollbar { width: 4px; }
 #sidebar::-webkit-scrollbar-track { background: transparent; }
