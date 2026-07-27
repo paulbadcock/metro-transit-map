@@ -8,7 +8,10 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div id="alert-banner" hidden></div>
+  <div id="alert-banner" hidden>
+    <div id="alert-banner-list"></div>
+    <button id="alert-dismiss" class="banner-dismiss" type="button" aria-label="Dismiss detour alert">&times;</button>
+  </div>
 
   <div id="service-warning" hidden>
     <span>⚠</span>
@@ -27,14 +30,14 @@
       </div>
 
       <!-- Tab Navigation -->
-      <nav id="tabs">
-        <button class="tab-btn active" data-tab="map">Map</button>
-        <button class="tab-btn" data-tab="commute">Commute</button>
-        <button class="tab-btn" data-tab="settings">Settings</button>
+      <nav id="tabs" role="tablist">
+        <button id="tabbtn-map" class="tab-btn active" data-tab="map" role="tab" aria-selected="true" aria-controls="tab-map">Map</button>
+        <button id="tabbtn-commute" class="tab-btn" data-tab="commute" role="tab" aria-selected="false" aria-controls="tab-commute">Commute</button>
+        <button id="tabbtn-settings" class="tab-btn" data-tab="settings" role="tab" aria-selected="false" aria-controls="tab-settings">Settings</button>
       </nav>
 
       <!-- Tab: Map Controls -->
-      <div id="tab-map" class="tab-panel active">
+      <div id="tab-map" class="tab-panel active" role="tabpanel" aria-labelledby="tabbtn-map">
         <div class="panel-section">
           <div class="section-label">Live Buses</div>
           <div id="bus-list">
@@ -48,7 +51,7 @@
       </div>
 
       <!-- Tab: Commute -->
-      <div id="tab-commute" class="tab-panel">
+      <div id="tab-commute" class="tab-panel" role="tabpanel" aria-labelledby="tabbtn-commute">
         <div id="commute-direction-indicator" class="direction-badge"></div>
 
         <div id="next-buses-section" class="panel-section">
@@ -67,7 +70,7 @@
       </div>
 
       <!-- Tab: Settings -->
-      <div id="tab-settings" class="tab-panel">
+      <div id="tab-settings" class="tab-panel" role="tabpanel" aria-labelledby="tabbtn-settings">
         <form id="settings-form">
           <div class="panel-section">
             <div class="section-label">Route</div>
