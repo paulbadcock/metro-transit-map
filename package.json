@@ -10,8 +10,15 @@
   },
   "dependencies": {
     "adm-zip": "^0.6.0",
-    "express": "^4.19.2",
-    "gtfs-realtime-bindings": "^1.1.1",
+    "express": "^5.2.1",
+    "gtfs-realtime-bindings": "^2.1.0",
     "node-fetch": "^3.3.2"
+  },
+  "overrides": {
+    "gtfs-realtime-bindings": {
+      "protobufjs-cli": {
+        "glob": "^11.0.0"
+      }
+    }
   }
 }
