@@ -1,18 +1,19 @@
-FROM node:24-alpine
+FROM cgr.dev/chainguard/node:latest-dev AS build
 
 WORKDIR /app
 
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-COPY server.js ./
-COPY public/ ./public/
+FROM cgr.dev/chainguard/node:latest AS runtime
 
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
-    && mkdir -p /app/data/gtfs \
-    && chown -R appuser:appgroup /app/data
-USER appuser
+WORKDIR /app
 
+COPY --from=build --chown=65532:65532 /app/node_modules ./node_modules
+COPY --chown=65532:65532 server.js ./
+COPY --chown=65532:65532 public/ ./public/
+
+# Base image runs as non-root (uid 65532) by default.
 EXPOSE 4040
 
-CMD ["node", "server.js"]
+CMD ["server.js"]
