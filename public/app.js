@@ -9,6 +9,7 @@ const state = {
   stops: [],
   allTripUpdates: [],
   schedule: [],
+  alerts: [],
   notifiedTripIds: new Set(),
   vehicleMarkers: new Map(), // id -> L.Marker
   stopMarkers: [],
@@ -364,7 +365,11 @@ function drawRoutePolylines(directions) {
       weight: 3,
       opacity: 0.6,
       dashArray: i === 1 ? "6,4" : null,
-    }).addTo(map);
+    })
+      .bindPopup(
+        `<strong>Direction ${escapeHtml(String(dir.direction_id))}</strong><br>${escapeHtml(dir.trip_headsign || "")}<br><span style="opacity:0.65">${latlngs.length} shape points</span>`,
+      )
+      .addTo(map);
     state.routePolylines.push(pl);
   });
 
@@ -423,6 +428,7 @@ async function switchRoute() {
   state.stops = [];
   state.schedule = [];
   state.allTripUpdates = [];
+  state.alerts = [];
   state.notifiedTripIds.clear();
 
   updateRouteHeader();
@@ -458,6 +464,7 @@ async function switchRoute() {
 
   updateCommutePanel();
   await checkServiceStatus();
+  await checkAlerts();
 }
 
 function panToBus(id) {
@@ -813,6 +820,30 @@ async function checkServiceStatus() {
   }
 }
 
+// ─── Service Alert Banner (detours, disruptions) ─────────────────────────────
+async function checkAlerts() {
+  try {
+    state.alerts = await apiFetch(
+      `/api/alerts?route_id=${encodeURIComponent(currentRouteId())}`,
+    );
+    const banner = document.getElementById("alert-banner");
+    if (state.alerts.length === 0) {
+      banner.hidden = true;
+      banner.innerHTML = "";
+      return;
+    }
+    banner.innerHTML = state.alerts
+      .map(
+        (a) =>
+          `<div class="alert-item" title="${escapeHtml(a.description)}"><span>🚧</span><span>${escapeHtml(a.header)}</span></div>`,
+      )
+      .join("");
+    banner.hidden = false;
+  } catch (err) {
+    console.warn("[BusTracker] Alert check failed:", err);
+  }
+}
+
 // ─── Polling ──────────────────────────────────────────────────────────────────
 async function pollVehicles() {
   try {
@@ -927,6 +958,7 @@ async function init() {
 
   updateCommutePanel();
   await checkServiceStatus();
+  await checkAlerts();
 
   // Start polling
   setInterval(pollVehicles, 15_000);
@@ -934,6 +966,7 @@ async function init() {
   setInterval(tickCommutePanel, 15_000);
   setInterval(tickBusAges, 1_000);
   setInterval(checkServiceStatus, 5 * 60_000);
+  setInterval(checkAlerts, 5 * 60_000);
 
   // Reload schedule for active stop every 5 minutes
   setInterval(async () => {

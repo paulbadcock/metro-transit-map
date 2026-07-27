@@ -15,11 +15,13 @@ const GTFS_DIR = join(__dirname, 'data', 'gtfs');
 
 const VEHICLE_POSITIONS_URL = 'https://gtfs.halifax.ca/realtime/Vehicle/VehiclePositions.pb';
 const TRIP_UPDATES_URL = 'https://gtfs.halifax.ca/realtime/TripUpdate/TripUpdates.pb';
+const ALERTS_URL = 'https://gtfs.halifax.ca/realtime/Alert/Alerts.pb';
 
 // In-memory caches
 const cache = {
   vehicles: { data: null, ts: 0, ttl: 15000 },
   tripUpdates: { data: null, ts: 0, ttl: 15000 },
+  alerts: { data: null, ts: 0, ttl: 5 * 60000 },
 };
 
 // Parsed static GTFS data
@@ -345,6 +347,40 @@ app.get('/api/trip-updates', async (req, res) => {
   } catch (err) {
     console.error('Error fetching trip updates:', err.message);
     res.status(502).json({ error: 'Failed to fetch trip updates' });
+  }
+});
+
+app.get('/api/alerts', async (req, res) => {
+  try {
+    const routeId = req.query.route_id || '194';
+    const feed = await getCached('alerts', () => fetchFeed(ALERTS_URL));
+    const nowSec = Date.now() / 1000;
+
+    const alerts = [];
+    for (const entity of feed.entity) {
+      const alert = entity.alert;
+      if (!alert) continue;
+      const informed = alert.informedEntity || [];
+      if (!informed.some(ie => ie.routeId === routeId)) continue;
+
+      const periods = alert.activePeriod || [];
+      const isActive = periods.length === 0 || periods.some(p => {
+        const start = p.start != null ? Number(p.start) : -Infinity;
+        const end = p.end != null ? Number(p.end) : Infinity;
+        return nowSec >= start && nowSec <= end;
+      });
+      if (!isActive) continue;
+
+      alerts.push({
+        id: entity.id,
+        header: alert.headerText?.translation?.[0]?.text || '',
+        description: alert.descriptionText?.translation?.[0]?.text || '',
+      });
+    }
+    res.json(alerts);
+  } catch (err) {
+    console.error('Error fetching alerts:', err.message);
+    res.status(502).json({ error: 'Failed to fetch service alerts' });
   }
 });
 
