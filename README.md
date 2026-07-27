@@ -130,8 +130,6 @@ The tab must be open for this to work. Each trip only triggers one notification 
 
 To test: open the browser console and run `testNotification()`.
 
-**Limitation:** Notifications do not work on a locked iPhone with this approach. See the iOS Push roadmap item below.
-
 ## Hosting
 
 ### Docker (recommended for self-hosting)
@@ -142,17 +140,3 @@ Runs a hardened, non-root, distroless container with health checks, log rotation
 
 ### Cloudflare Tunnel (no code changes)
 Run the Node.js server (locally or in the Docker container) and expose it via `cloudflared tunnel`. Cloudflare handles HTTPS and your domain without opening firewall ports.
-
-## Roadmap
-
-### iOS push notifications
-Enable notifications on a locked iPhone via server-initiated Web Push. The current client-polling approach stops working as soon as iOS suspends the tab.
-
-Required additions:
-- `manifest.json` to make the app installable as a PWA (iOS push only works from a Home Screen app, not a Safari tab)
-- Service worker (`sw.js`) to handle `push` events and call `self.registration.showNotification()`
-- VAPID key pair for authenticating the server with Apple's push infrastructure
-- `/api/subscribe` endpoint to store each device's push subscription alongside their stop and threshold preferences
-- Server-side polling loop that checks GTFS-RT and calls `web-push` when a bus is within range of a subscribed stop
-
-iOS requirements: 16.4 or later, app launched from Home Screen at least once, notification permission granted via a user gesture (button tap).
