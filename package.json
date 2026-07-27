@@ -6,12 +6,15 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test": "node --test",
+    "lint": "eslint ."
   },
   "dependencies": {
     "adm-zip": "^0.6.0",
     "express": "^5.2.1",
     "gtfs-realtime-bindings": "^2.1.0",
+    "helmet": "^8.3.0",
     "node-fetch": "^3.3.2"
   },
   "overrides": {
@@ -20,5 +23,10 @@
         "glob": "^11.0.0"
       }
     }
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.0",
+    "globals": "^17.8.0"
   }
 }

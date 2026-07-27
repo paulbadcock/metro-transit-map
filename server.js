@@ -1,14 +1,36 @@
 import express from 'express';
+import helmet from 'helmet';
 import fetch from 'node-fetch';
 import AdmZip from 'adm-zip';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
+import {
+  parseCsv,
+  groupTripsByDirection,
+  pickCanonicalShapeId,
+  pickBestTrip,
+  computeActiveServiceIds,
+} from './lib/gtfs-utils.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Errors thrown outside the request/response cycle (e.g. in a timer or a
+// rejected promise nothing awaits) have no Express error handler to catch
+// them. Log and exit so the container's restart policy brings up a clean
+// process, rather than continuing to run in a possibly-corrupted state.
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection:', reason);
+  process.exit(1);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+  process.exit(1);
+});
 
 const GTFS_STATIC_URL = 'https://gtfs.halifax.ca/static/google_transit.zip';
 const GTFS_DIR = join(__dirname, 'data', 'gtfs');
@@ -37,37 +59,6 @@ let gtfsData = {
 };
 
 // ─── Static GTFS Bootstrap ────────────────────────────────────────────────────
-
-function parseCsv(text) {
-  const lines = text.split('\n').filter(l => l.trim());
-  if (lines.length === 0) return [];
-  const headers = lines[0].split(',').map(h => h.trim().replace(/^\uFEFF/, ''));
-  return lines.slice(1).map(line => {
-    const values = splitCsvLine(line);
-    const obj = {};
-    headers.forEach((h, i) => { obj[h] = (values[i] || '').trim(); });
-    return obj;
-  });
-}
-
-function splitCsvLine(line) {
-  const result = [];
-  let current = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      inQuotes = !inQuotes;
-    } else if (ch === ',' && !inQuotes) {
-      result.push(current);
-      current = '';
-    } else {
-      current += ch;
-    }
-  }
-  result.push(current);
-  return result;
-}
 
 async function downloadGtfs() {
   console.log('Downloading GTFS static data...');
@@ -220,8 +211,6 @@ function getRouteInfo(routeId) {
 // ─── Today's active service IDs ───────────────────────────────────────────────
 
 function getTodayServiceIds() {
-  if (gtfsData.calendars.size === 0 && gtfsData.calendarDates.size === 0) return null;
-
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Halifax' }));
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, '0');
@@ -229,24 +218,7 @@ function getTodayServiceIds() {
   const dateStr = `${y}${m}${d}`;
   const dayName = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][now.getDay()];
 
-  const active = new Set();
-
-  for (const [serviceId, cal] of gtfsData.calendars) {
-    if (cal.start_date <= dateStr && dateStr <= cal.end_date && cal[dayName] === '1') {
-      active.add(serviceId);
-    }
-  }
-
-  for (const [serviceId, exceptions] of gtfsData.calendarDates) {
-    for (const exc of exceptions) {
-      if (exc.date === dateStr) {
-        if (exc.exception_type === '1') active.add(serviceId);
-        if (exc.exception_type === '2') active.delete(serviceId);
-      }
-    }
-  }
-
-  return active;
+  return computeActiveServiceIds(gtfsData.calendars, gtfsData.calendarDates, dateStr, dayName);
 }
 
 // ─── GTFS-RT helpers ──────────────────────────────────────────────────────────
@@ -268,6 +240,24 @@ async function getCached(key, fetchFn) {
 }
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
+
+// CSP allow-list matches this app's actual resources: Leaflet is loaded
+// from unpkg.com (its CSS also pulls marker icons from there), map tiles
+// come from OpenStreetMap's lettered subdomains, and everything else
+// (API calls, our own scripts/styles) is same-origin.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", 'https://unpkg.com'],
+      styleSrc: ["'self'", 'https://unpkg.com', "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'https://unpkg.com', 'https://*.tile.openstreetmap.org'],
+      connectSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+    },
+  },
+}));
 
 app.use(express.static(join(__dirname, 'public')));
 
@@ -430,40 +420,16 @@ app.get('/api/route-stops', (req, res) => {
   const routeId = req.query.route_id || '194';
   const { tripIds } = getRouteInfo(routeId);
 
-  // Group trips by direction, and tally how many trips use each shape_id —
-  // some routes have rare detour/short-turn variants alongside the main
-  // shape, and we only want the one most trips actually run.
-  const tripsByDir = {};
-  const shapeCountsByDir = {};
-  for (const tripId of tripIds) {
-    const trip = gtfsData.trips.get(tripId);
-    if (!trip) continue;
-    const dir = trip.direction_id || '0';
-    (tripsByDir[dir] ??= []).push(trip);
-    if (trip.shape_id) {
-      const counts = (shapeCountsByDir[dir] ??= {});
-      counts[trip.shape_id] = (counts[trip.shape_id] || 0) + 1;
-    }
-  }
+  const { tripsByDir, shapeCountsByDir } = groupTripsByDirection(tripIds, gtfsData.trips);
 
   const byDirection = {};
   for (const [dir, dirTrips] of Object.entries(tripsByDir)) {
-    const counts = shapeCountsByDir[dir] || {};
-    const canonicalShapeId = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
-
-    // Among trips running the canonical shape, prefer the one with the most
-    // stops so a truncated variant doesn't win by tie-breaking on order.
-    let bestTrip = null;
-    let bestStopCount = -1;
-    for (const trip of dirTrips) {
-      if (canonicalShapeId && trip.shape_id !== canonicalShapeId) continue;
-      const stopCount = (gtfsData.stopTimesByTrip.get(trip.trip_id) || []).length;
-      if (stopCount > bestStopCount) {
-        bestStopCount = stopCount;
-        bestTrip = trip;
-      }
-    }
-    if (!bestTrip) bestTrip = dirTrips[0];
+    const canonicalShapeId = pickCanonicalShapeId(shapeCountsByDir[dir] || {});
+    const bestTrip = pickBestTrip(
+      dirTrips,
+      canonicalShapeId,
+      tripId => (gtfsData.stopTimesByTrip.get(tripId) || []).length
+    );
 
     const sts = [...(gtfsData.stopTimesByTrip.get(bestTrip.trip_id) || [])];
     sts.sort((a, b) => a.stop_sequence - b.stop_sequence);
@@ -549,6 +515,14 @@ app.get('/api/status', (req, res) => {
     routeTrips: tripIds.size,
     stopTimesLoaded: stopTimes.length,
   });
+});
+
+// Catch-all for errors thrown or rejected within route handlers (Express 5
+// forwards rejected async handlers here automatically) so callers get a
+// consistent JSON error instead of Express's default HTML error page.
+app.use((err, req, res, _next) => {
+  console.error(`Unhandled error on ${req.method} ${req.path}:`, err);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 // ─── Startup ──────────────────────────────────────────────────────────────────
