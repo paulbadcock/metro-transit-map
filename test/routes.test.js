@@ -70,6 +70,22 @@ describe('GET /api/stops', () => {
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), []);
   });
+
+  test('includes the direction(s) that serve each stop', async () => {
+    gtfsData.trips.set('t2', { trip_id: 't2', route_id: '194', direction_id: '1', shape_id: 'sh1', trip_headsign: 'Uptown', service_id: 'weekday' });
+    gtfsData.stopTimesByTrip.set('t2', [
+      { trip_id: 't2', arrival_time: '09:00:00', departure_time: '09:00:00', stop_id: 's2', stop_sequence: 1 },
+    ]);
+
+    const res = await fetch(`${baseUrl}/api/stops?route_id=194`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+
+    const s1 = body.find((s) => s.stop_id === 's1');
+    const s2 = body.find((s) => s.stop_id === 's2');
+    assert.deepEqual(s1.directions, [0]);
+    assert.deepEqual(s2.directions, [0, 1]);
+  });
 });
 
 describe('GET /api/schedule', () => {
