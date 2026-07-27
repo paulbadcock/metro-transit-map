@@ -407,12 +407,18 @@ async function loadStopPopupTimes(marker, stopId, stopName) {
 }
 
 // ─── Map: Route Polylines ─────────────────────────────────────────────────────
+// Mirrors --color-dir-outbound / --color-dir-inbound in style.css. Leaflet's
+// vector layers need a literal color string (not a var() reference -- the
+// canvas renderer fallback can't resolve CSS custom properties), so the
+// values are duplicated here rather than read from the stylesheet.
+const DIR_OUTBOUND_COLOR = "#2f8fd1";
+const DIR_INBOUND_COLOR = "#d18f2f";
+
 function drawRoutePolylines(directions) {
   for (const pl of state.routePolylines) pl.remove();
   state.routePolylines = [];
 
-  const colors = ["#e94560", "#533483"];
-  directions.forEach((dir, i) => {
+  directions.forEach((dir) => {
     // Prefer shape track (follows roads); fall back to straight stop-to-stop lines
     const latlngs =
       dir.shape && dir.shape.length > 1
@@ -421,11 +427,12 @@ function drawRoutePolylines(directions) {
             .filter((s) => s.stop_lat && s.stop_lon)
             .map((s) => [s.stop_lat, s.stop_lon]);
     if (latlngs.length < 2) return;
+    const isInbound = dir.direction_id === 1;
     const pl = L.polyline(latlngs, {
-      color: colors[i % colors.length],
+      color: isInbound ? DIR_INBOUND_COLOR : DIR_OUTBOUND_COLOR,
       weight: 3,
       opacity: 0.6,
-      dashArray: i === 1 ? "6,4" : null,
+      dashArray: isInbound ? "6,4" : null,
     })
       .bindPopup(
         `<strong>Direction ${escapeHtml(String(dir.direction_id))}</strong><br>${escapeHtml(dir.trip_headsign || "")}<br><span style="opacity:0.65">${latlngs.length} shape points</span>`,
