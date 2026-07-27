@@ -18,19 +18,29 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Errors thrown outside the request/response cycle (e.g. in a timer or a
-// rejected promise nothing awaits) have no Express error handler to catch
-// them. Log and exit so the container's restart policy brings up a clean
-// process, rather than continuing to run in a possibly-corrupted state.
-process.on('unhandledRejection', (reason) => {
-  console.error('Unhandled promise rejection:', reason);
-  process.exit(1);
-});
+// Distinguishes "running as the real server" from "imported as a module"
+// (e.g. by integration tests) -- gates both the process-exit error handlers
+// below and the startup()/app.listen() call at the bottom of this file.
+const isMainModule = process.argv[1] === fileURLToPath(import.meta.url);
 
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught exception:', err);
-  process.exit(1);
-});
+if (isMainModule) {
+  // Errors thrown outside the request/response cycle (e.g. in a timer or a
+  // rejected promise nothing awaits) have no Express error handler to catch
+  // them. Log and exit so the container's restart policy brings up a clean
+  // process, rather than continuing to run in a possibly-corrupted state.
+  // Only registered for the real server -- a test importing this module
+  // shouldn't have an unrelated unhandled rejection hard-kill the whole
+  // test run.
+  process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled promise rejection:', reason);
+    process.exit(1);
+  });
+
+  process.on('uncaughtException', (err) => {
+    console.error('Uncaught exception:', err);
+    process.exit(1);
+  });
+}
 
 const GTFS_STATIC_URL = 'https://gtfs.halifax.ca/static/google_transit.zip';
 const GTFS_DIR = join(__dirname, 'data', 'gtfs');
@@ -62,7 +72,7 @@ let gtfsData = {
 
 async function downloadGtfs() {
   console.log('Downloading GTFS static data...');
-  const res = await fetch(GTFS_STATIC_URL);
+  const res = await fetch(GTFS_STATIC_URL, { signal: AbortSignal.timeout(30000) });
   if (!res.ok) throw new Error(`GTFS download failed: ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
   const zip = new AdmZip(buf);
@@ -224,7 +234,7 @@ function getTodayServiceIds() {
 // ─── GTFS-RT helpers ──────────────────────────────────────────────────────────
 
 async function fetchFeed(url) {
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
   if (!res.ok) throw new Error(`Feed fetch failed (${url}): ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
   return GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(buf);
@@ -551,7 +561,13 @@ async function startup() {
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-startup().catch(err => {
-  console.error('Startup failed:', err);
-  process.exit(1);
-});
+// Skip auto-starting when imported (e.g. by integration tests) rather than
+// run directly -- avoids a real network download and port bind on import.
+if (isMainModule) {
+  startup().catch(err => {
+    console.error('Startup failed:', err);
+    process.exit(1);
+  });
+}
+
+export { app, gtfsData };

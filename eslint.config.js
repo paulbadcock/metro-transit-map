@@ -25,6 +25,16 @@ export default [
       globals: {
         ...globals.browser,
         L: 'readonly',
+        NextBuses: 'writable',
+      },
+    },
+  },
+  {
+    // UMD wrapper: also runs under Node's CommonJS loader (see public/package.json).
+    files: ['public/next-buses.js'],
+    languageOptions: {
+      globals: {
+        ...globals.commonjs,
       },
     },
   },
