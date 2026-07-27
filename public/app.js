@@ -828,6 +828,9 @@ document.getElementById("test-notif-btn").addEventListener("click", () => {
 });
 
 // ─── Service Warning Bar ─────────────────────────────────────────────────────
+const SERVICE_WARNING_DISMISS_KEY = "metromaps_dismissed_service_warning";
+let currentServiceWarningMessage = "";
+
 async function checkServiceStatus() {
   try {
     const s = await apiFetch(
@@ -843,15 +846,19 @@ async function checkServiceStatus() {
     if (activeVehicles.length === 0) {
       const route = s.routeShortName || currentRouteId();
       if (s.nowMin != null && s.nowMin < s.firstMin) {
-        text.textContent = `Route ${route} is not yet in service — first bus at ${formatTime12(s.firstService)}`;
+        currentServiceWarningMessage = `Route ${route} is not yet in service — first bus at ${formatTime12(s.firstService)}`;
       } else if (s.nextService) {
-        text.textContent = `Route ${route} has no active buses — next bus at ${formatTime12(s.nextService)}`;
+        currentServiceWarningMessage = `Route ${route} has no active buses — next bus at ${formatTime12(s.nextService)}`;
       } else if (s.lastService) {
-        text.textContent = `Route ${route} has finished service for today — last bus was at ${formatTime12(s.lastService)}`;
+        currentServiceWarningMessage = `Route ${route} has finished service for today — last bus was at ${formatTime12(s.lastService)}`;
       } else {
-        text.textContent = `Route ${route} is not currently in service`;
+        currentServiceWarningMessage = `Route ${route} is not currently in service`;
       }
-      bar.hidden = false;
+      text.textContent = currentServiceWarningMessage;
+      // Stay dismissed only while the message is unchanged — a status change
+      // (e.g. "not yet in service" → "finished for today") surfaces again.
+      const dismissed = sessionStorage.getItem(SERVICE_WARNING_DISMISS_KEY);
+      bar.hidden = dismissed === currentServiceWarningMessage;
     } else {
       bar.hidden = true;
     }
@@ -859,6 +866,16 @@ async function checkServiceStatus() {
     console.warn("[BusTracker] Service status check failed:", err);
   }
 }
+
+document
+  .getElementById("service-warning-dismiss")
+  .addEventListener("click", () => {
+    sessionStorage.setItem(
+      SERVICE_WARNING_DISMISS_KEY,
+      currentServiceWarningMessage,
+    );
+    document.getElementById("service-warning").hidden = true;
+  });
 
 // ─── Service Alert Banner (detours, disruptions) ─────────────────────────────
 const ALERT_DISMISS_KEY = "metromaps_dismissed_alerts";
