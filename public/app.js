@@ -17,6 +17,7 @@ const state = {
   activeTab: "map",
   lastVehicleFetch: null,
   fetchErrors: 0,
+  serviceStatus: null,
 };
 
 // ─── Settings (persisted in localStorage) ────────────────────────────────────
@@ -426,10 +427,26 @@ function drawRoutePolylines(directions) {
 }
 
 // ─── Sidebar: Bus List ────────────────────────────────────────────────────────
+function busListEmptyMessage() {
+  const s = state.serviceStatus;
+  if (!s) return `No buses on route ${currentRouteId()} right now.`;
+  const route = s.routeShortName || currentRouteId();
+  if (s.nowMin != null && s.nowMin < s.firstMin) {
+    return `No buses yet today — first bus at ${formatTime12(s.firstService)}.`;
+  }
+  if (s.nextService) {
+    return `No buses right now — next bus at ${formatTime12(s.nextService)}.`;
+  }
+  if (s.lastService) {
+    return `Service has ended for today — last bus was at ${formatTime12(s.lastService)}.`;
+  }
+  return `No buses on route ${route} right now.`;
+}
+
 function updateBusList() {
   const el = document.getElementById("bus-list");
   if (state.vehicles.length === 0) {
-    el.innerHTML = `<div class="empty-state">No buses on route ${currentRouteId()} right now.</div>`;
+    el.innerHTML = `<div class="empty-state">${escapeHtml(busListEmptyMessage())}</div>`;
     return;
   }
 
@@ -692,7 +709,7 @@ function populateStopDropdowns() {
   const opts = state.stops
     .map(
       (s) =>
-        `<option value="${escapeHtml(s.stop_id)}">${escapeHtml(s.stop_name)} (${escapeHtml(s.stop_id)})</option>`,
+        `<option value="${escapeHtml(s.stop_id)}">${escapeHtml(s.stop_name)}</option>`,
     )
     .join("");
   const placeholder = '<option value="">— Select a stop —</option>';
@@ -777,14 +794,16 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     const tab = btn.dataset.tab;
     state.activeTab = tab;
 
-    document
-      .querySelectorAll(".tab-btn")
-      .forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".tab-btn").forEach((b) => {
+      b.classList.remove("active");
+      b.setAttribute("aria-selected", "false");
+    });
     document
       .querySelectorAll(".tab-panel")
       .forEach((p) => p.classList.remove("active"));
 
     btn.classList.add("active");
+    btn.setAttribute("aria-selected", "true");
     document.getElementById(`tab-${tab}`).classList.add("active");
 
     // Invalidate map size when map tab becomes visible
@@ -814,6 +833,9 @@ async function checkServiceStatus() {
     const s = await apiFetch(
       `/api/service-status?route_id=${encodeURIComponent(currentRouteId())}`,
     );
+    state.serviceStatus = s;
+    updateBusList();
+
     const bar = document.getElementById("service-warning");
     const text = document.getElementById("service-warning-text");
 
@@ -839,28 +861,46 @@ async function checkServiceStatus() {
 }
 
 // ─── Service Alert Banner (detours, disruptions) ─────────────────────────────
+const ALERT_DISMISS_KEY = "metromaps_dismissed_alerts";
+let currentAlertSignature = "";
+
+function alertSignature(alerts) {
+  return alerts.map((a) => a.header).join("|");
+}
+
 async function checkAlerts() {
   try {
     state.alerts = await apiFetch(
       `/api/alerts?route_id=${encodeURIComponent(currentRouteId())}`,
     );
     const banner = document.getElementById("alert-banner");
+    const list = document.getElementById("alert-banner-list");
     if (state.alerts.length === 0) {
       banner.hidden = true;
-      banner.innerHTML = "";
+      list.innerHTML = "";
+      currentAlertSignature = "";
       return;
     }
-    banner.innerHTML = state.alerts
+    currentAlertSignature = alertSignature(state.alerts);
+    list.innerHTML = state.alerts
       .map(
         (a) =>
           `<div class="alert-item" title="${escapeHtml(a.description)}"><span>🚧</span><span>${escapeHtml(a.header)}</span></div>`,
       )
       .join("");
-    banner.hidden = false;
+    // Stay dismissed only while the same set of alerts is still active — a
+    // new or changed alert should surface even if an earlier one was dismissed.
+    const dismissed = sessionStorage.getItem(ALERT_DISMISS_KEY);
+    banner.hidden = dismissed === currentAlertSignature;
   } catch (err) {
     console.warn("[BusTracker] Alert check failed:", err);
   }
 }
+
+document.getElementById("alert-dismiss").addEventListener("click", () => {
+  sessionStorage.setItem(ALERT_DISMISS_KEY, currentAlertSignature);
+  document.getElementById("alert-banner").hidden = true;
+});
 
 // ─── Polling ──────────────────────────────────────────────────────────────────
 async function pollVehicles() {
