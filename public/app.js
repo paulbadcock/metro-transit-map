@@ -63,7 +63,13 @@ L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r
 }).addTo(map);
 
 // ─── Bus Icon ─────────────────────────────────────────────────────────────────
-function makeBusIcon(bearing, timestamp, delayMin) {
+function busDirectionClass(directionId) {
+  if (directionId === 0) return "dir-outbound";
+  if (directionId === 1) return "dir-inbound";
+  return null;
+}
+
+function makeBusIcon(bearing, timestamp, delayMin, directionId) {
   const rotation =
     bearing != null ? `transform:rotate(${bearing + 90}deg)` : "";
   let ageBadge = "";
@@ -85,9 +91,12 @@ function makeBusIcon(bearing, timestamp, delayMin) {
     }
   }
 
+  const dirClass = busDirectionClass(directionId);
+  const discHtml = dirClass ? `<div class="bus-direction-disc ${dirClass}"></div>` : "";
+
   return L.divIcon({
     className: "",
-    html: `<div class="bus-marker-wrap"><div class="${iconClass}" style="${rotation}">🚌</div>${ageBadge}${delayBadge}</div>`,
+    html: `<div class="bus-marker-wrap">${discHtml}<div class="${iconClass}" style="${rotation}">🚌</div>${ageBadge}${delayBadge}</div>`,
     iconSize: [28, 28],
     iconAnchor: [14, 14],
     popupAnchor: [0, -14],
@@ -265,11 +274,11 @@ function updateVehicleMarkers() {
     if (state.vehicleMarkers.has(v.id)) {
       const marker = state.vehicleMarkers.get(v.id);
       marker.setLatLng([v.lat, v.lon]);
-      marker.setIcon(makeBusIcon(v.bearing, v.timestamp, delayMin));
+      marker.setIcon(makeBusIcon(v.bearing, v.timestamp, delayMin, v.direction_id));
       marker.getPopup()?.setContent(buildBusPopup(v, delayMin));
     } else {
       const marker = L.marker([v.lat, v.lon], {
-        icon: makeBusIcon(v.bearing, v.timestamp, delayMin),
+        icon: makeBusIcon(v.bearing, v.timestamp, delayMin, v.direction_id),
         title: `Bus ${v.label || v.id}`,
         zIndexOffset: 100,
       })
