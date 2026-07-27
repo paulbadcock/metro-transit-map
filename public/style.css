@@ -34,12 +34,13 @@ html, body {
 
 /* ─── Service Warning Bar ───────────────────────────────────────────────────── */
 #service-warning {
+  position: relative;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 9px 16px;
+  padding: 9px 40px 9px 16px;
   background: #7a4500;
   border-bottom: 1px solid #f59e0b;
   color: #fde68a;
@@ -69,7 +70,7 @@ html, body {
   transform: translateY(-50%);
   background: transparent;
   border: none;
-  color: #fbd5d8;
+  color: inherit;
   font-size: 18px;
   line-height: 1;
   padding: 4px 8px;
