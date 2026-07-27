@@ -2,27 +2,26 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Branches
-
-- `main` — Node.js/Express version (`server.js`). Run locally with `npm start` or `npm run dev`.
-- `feature/docker` — Adds Docker/docker-compose for self-hosted deployment. See below.
-
----
-
-## main branch — Node.js
+## Running locally
 
 ```bash
 npm start          # Run server (node server.js)
 npm run dev        # Run with auto-restart on file changes (node --watch)
+npm test           # Run the test suite (node:test)
+npm run lint       # Run ESLint
 ```
 
-No build step, no test suite, no linter configured. The server starts on http://localhost:3000.
+The server starts on http://localhost:3000. No build step.
 
 On first start (or when GTFS data is >24h old), `server.js` downloads `google_transit.zip` from Halifax Transit and extracts five files into `data/gtfs/`. Subsequent starts skip the download.
 
+CI (`.github/workflows/ci.yml`) runs lint, tests, `npm audit --audit-level=high`, and a Docker build check on every push/PR to `main`.
+
 ---
 
-## feature/docker branch — Docker
+## Docker deployment
+
+Docker files (`Dockerfile`, `docker-compose.yml`) live on `main` alongside the app — there is no separate Docker branch to check out (an old `feature/docker` branch still exists on the remote but is stale; Docker support was merged to `main`).
 
 ```bash
 docker compose up --build      # Build image and start container
@@ -38,18 +37,28 @@ To run on a different host port:
 PORT=8080 docker compose up -d
 ```
 
-The container runs as a non-root user (`appuser`). No other configuration is required.
+**Image build** is multi-stage: `node:24-slim` (Docker Official) installs dependencies, then only `node_modules`/`server.js`/`lib/`/`public/` are copied into `gcr.io/distroless/nodejs24-debian12:nonroot` for runtime. The runtime image has **no shell and no package manager** — `docker exec sh` will fail by design. It runs as non-root (uid `65532`) by default; the `data/gtfs` directory is pre-created with that ownership in the build stage specifically so a fresh named volume mounted at `/app/data/gtfs` inherits correct ownership from the image on first use (Docker seeds a new named volume from whatever the image already has at that mount path). If you ever see a `chmod ENOENT` error from `adm-zip` on startup, it means the volume ended up root-owned — reset it with `docker compose down -v` and rebuild.
+
+`HEALTHCHECK` execs `node` directly (`/nodejs/bin/node -e "..."`) since there's no shell to run a `curl`/`wget` one-liner. Logging uses `json-file` with `max-size`/`max-file` caps in `docker-compose.yml` to avoid unbounded log growth on a long-running host.
+
+The server handles `SIGTERM`/`SIGINT` by closing the HTTP server cleanly (with a 10s hard-exit fallback), so `docker stop`/redeploys don't have to wait out Docker's hard-kill grace period.
 
 ## Architecture
 
 **Backend (`server.js`)** — ES module. Serves `public/` as static files and exposes these API routes:
+- `GET /api/routes` — All routes (from static GTFS)
 - `GET /api/vehicles` — GTFS-RT vehicle positions filtered to route (15s TTL cache)
-- `GET /api/trip-updates` — GTFS-RT stop-time updates for route (30s TTL cache)
+- `GET /api/trip-updates` — GTFS-RT stop-time updates for route (15s TTL cache)
+- `GET /api/alerts` — GTFS-RT service alerts filtered to route (5min TTL cache)
 - `GET /api/stops` — All stops serving route (from static GTFS, sorted by name)
 - `GET /api/schedule?stop_id=&direction=` — All trips visiting a stop today, sorted by departure time
 - `GET /api/route-stops` — Stops and shape coordinates grouped by direction (for drawing polylines)
 - `GET /api/service-status` — Whether route is currently running, based on first/last departure time
 - `GET /api/status` — Debug: counts of loaded GTFS data
+
+Security headers are set via `helmet`, including a CSP allow-listing this app's actual external resources (Leaflet + its assets from `unpkg.com`, OpenStreetMap tile subdomains). **If you add a new external resource (CDN script, font, API), update the CSP directives in `server.js` or it will be silently blocked in the browser** — check the browser console for CSP violation messages if something loads locally but not in a fresh browser session.
+
+**Pure GTFS logic lives in `lib/gtfs-utils.js`** (CSV parsing, canonical-shape/trip selection for `/api/route-stops`, calendar-exception handling for `/api/service-status`), separated from `server.js` specifically so it can be unit tested — `server.js` has startup side effects (network download + `app.listen`) that make it unsafe to import directly in a test file. Tests are in `test/`.
 
 **Static GTFS loading** (`loadGtfsData`): At startup, parses `routes.txt`, `stops.txt`, `trips.txt`, `stop_times.txt`, and `shapes.txt` into `gtfsData` Maps/Sets in memory. Only stop_times and shapes belonging to route trips are retained, keeping memory use low. GTFS data is refreshed from source if the `.downloaded` timestamp file in `data/gtfs/` is older than 24 hours.
 

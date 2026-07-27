@@ -5,11 +5,19 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 
+# Pre-create the GTFS data directory here (this stage still has a shell) so
+# it exists in the image with the right ownership. docker-compose mounts a
+# named volume at this path; on first use Docker seeds a fresh volume from
+# whatever the image already has there -- including ownership -- so without
+# this the volume ends up root-owned and unwritable by the non-root runtime.
+RUN mkdir -p /app/data/gtfs
+
 FROM gcr.io/distroless/nodejs24-debian12:nonroot AS runtime
 
 WORKDIR /app
 
 COPY --from=build --chown=65532:65532 /app/node_modules ./node_modules
+COPY --from=build --chown=65532:65532 /app/data ./data
 COPY --chown=65532:65532 server.js ./
 COPY --chown=65532:65532 lib/ ./lib/
 COPY --chown=65532:65532 public/ ./public/

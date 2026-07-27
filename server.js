@@ -535,9 +535,20 @@ async function startup() {
   }
   loadGtfsData();
 
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`Bus Tracker running at http://localhost:${PORT}`);
   });
+
+  // On docker stop/compose down, stop accepting new connections and let
+  // in-flight requests finish rather than being hard-killed by Docker's
+  // grace period (10s by default).
+  const shutdown = (signal) => {
+    console.log(`${signal} received, shutting down...`);
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(1), 10000).unref();
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 startup().catch(err => {
