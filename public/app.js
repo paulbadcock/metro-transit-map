@@ -63,7 +63,13 @@ L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r
 }).addTo(map);
 
 // ─── Bus Icon ─────────────────────────────────────────────────────────────────
-function makeBusIcon(bearing, timestamp, delayMin) {
+function busDirectionClass(directionId) {
+  if (directionId === 0) return "dir-outbound";
+  if (directionId === 1) return "dir-inbound";
+  return null;
+}
+
+function makeBusIcon(bearing, timestamp, delayMin, directionId) {
   const rotation =
     bearing != null ? `transform:rotate(${bearing + 90}deg)` : "";
   let ageBadge = "";
@@ -85,9 +91,12 @@ function makeBusIcon(bearing, timestamp, delayMin) {
     }
   }
 
+  const dirClass = busDirectionClass(directionId);
+  const discHtml = dirClass ? `<div class="bus-direction-disc ${dirClass}"></div>` : "";
+
   return L.divIcon({
     className: "",
-    html: `<div class="bus-marker-wrap"><div class="${iconClass}" style="${rotation}">🚌</div>${ageBadge}${delayBadge}</div>`,
+    html: `<div class="bus-marker-wrap">${discHtml}<div class="${iconClass}" style="${rotation}">🚌</div>${ageBadge}${delayBadge}</div>`,
     iconSize: [28, 28],
     iconAnchor: [14, 14],
     popupAnchor: [0, -14],
@@ -110,9 +119,15 @@ function getTripDelayMinutes(tripId) {
   return delaySeconds != null ? Math.round(delaySeconds / 60) : null;
 }
 
-function makeStopIcon() {
+function stopDirectionClass(directions) {
+  if (!directions || directions.length === 0) return "";
+  if (directions.length > 1) return "dir-shared";
+  return directions[0] === 1 ? "dir-inbound" : "dir-outbound";
+}
+
+function makeStopIcon(directions) {
   return L.divIcon({
-    className: "stop-marker",
+    className: `stop-marker ${stopDirectionClass(directions)}`,
     iconSize: [16, 16],
     iconAnchor: [8, 8],
   });
@@ -259,11 +274,11 @@ function updateVehicleMarkers() {
     if (state.vehicleMarkers.has(v.id)) {
       const marker = state.vehicleMarkers.get(v.id);
       marker.setLatLng([v.lat, v.lon]);
-      marker.setIcon(makeBusIcon(v.bearing, v.timestamp, delayMin));
+      marker.setIcon(makeBusIcon(v.bearing, v.timestamp, delayMin, v.direction_id));
       marker.getPopup()?.setContent(buildBusPopup(v, delayMin));
     } else {
       const marker = L.marker([v.lat, v.lon], {
-        icon: makeBusIcon(v.bearing, v.timestamp, delayMin),
+        icon: makeBusIcon(v.bearing, v.timestamp, delayMin, v.direction_id),
         title: `Bus ${v.label || v.id}`,
         zIndexOffset: 100,
       })
@@ -338,7 +353,7 @@ function drawStopMarkers() {
   for (const s of state.stops) {
     if (!s.stop_lat || !s.stop_lon) continue;
     const m = L.marker([s.stop_lat, s.stop_lon], {
-      icon: makeStopIcon(),
+      icon: makeStopIcon(s.directions),
       title: s.stop_name,
     })
       .bindPopup(buildStopPopup(s.stop_name, s.stop_id, null))
@@ -392,12 +407,18 @@ async function loadStopPopupTimes(marker, stopId, stopName) {
 }
 
 // ─── Map: Route Polylines ─────────────────────────────────────────────────────
+// Mirrors --color-dir-outbound / --color-dir-inbound in style.css. Leaflet's
+// vector layers need a literal color string (not a var() reference -- the
+// canvas renderer fallback can't resolve CSS custom properties), so the
+// values are duplicated here rather than read from the stylesheet.
+const DIR_OUTBOUND_COLOR = "#2f8fd1";
+const DIR_INBOUND_COLOR = "#d18f2f";
+
 function drawRoutePolylines(directions) {
   for (const pl of state.routePolylines) pl.remove();
   state.routePolylines = [];
 
-  const colors = ["#e94560", "#533483"];
-  directions.forEach((dir, i) => {
+  directions.forEach((dir) => {
     // Prefer shape track (follows roads); fall back to straight stop-to-stop lines
     const latlngs =
       dir.shape && dir.shape.length > 1
@@ -406,11 +427,12 @@ function drawRoutePolylines(directions) {
             .filter((s) => s.stop_lat && s.stop_lon)
             .map((s) => [s.stop_lat, s.stop_lon]);
     if (latlngs.length < 2) return;
+    const isInbound = dir.direction_id === 1;
     const pl = L.polyline(latlngs, {
-      color: colors[i % colors.length],
+      color: isInbound ? DIR_INBOUND_COLOR : DIR_OUTBOUND_COLOR,
       weight: 3,
       opacity: 0.6,
-      dashArray: i === 1 ? "6,4" : null,
+      dashArray: isInbound ? "6,4" : null,
     })
       .bindPopup(
         `<strong>Direction ${escapeHtml(String(dir.direction_id))}</strong><br>${escapeHtml(dir.trip_headsign || "")}<br><span style="opacity:0.65">${latlngs.length} shape points</span>`,

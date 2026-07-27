@@ -12,6 +12,7 @@ import {
   pickCanonicalShapeId,
   pickBestTrip,
   computeActiveServiceIds,
+  computeStopDirections,
 } from './lib/gtfs-utils.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -300,6 +301,11 @@ app.get('/api/vehicles', async (req, res) => {
       if (vehicleRouteId && vehicleRouteId !== routeId) continue;
       if (!vehicleRouteId && tripId && !tripIds.has(tripId)) continue;
 
+      const trip = tripId ? gtfsData.trips.get(tripId) : null;
+      const directionId = trip && trip.direction_id !== undefined && trip.direction_id !== ''
+        ? parseInt(trip.direction_id, 10)
+        : null;
+
       vehicles.push({
         id: entity.id,
         lat: vp.position?.latitude,
@@ -308,6 +314,7 @@ app.get('/api/vehicles', async (req, res) => {
         speed: vp.position?.speed,
         trip_id: vp.trip?.tripId,
         route_id: vehicleRouteId,
+        direction_id: directionId,
         timestamp: vp.timestamp ? Number(vp.timestamp) : null,
         label: vp.vehicle?.label,
       });
@@ -391,12 +398,15 @@ app.get('/api/alerts', async (req, res) => {
 
 app.get('/api/stops', (req, res) => {
   const routeId = req.query.route_id || '194';
-  const { stopIds } = getRouteInfo(routeId);
+  const { stopIds, stopTimes } = getRouteInfo(routeId);
+  const stopDirections = computeStopDirections(stopTimes, gtfsData.trips);
 
   const stops = [];
   for (const stopId of stopIds) {
     const s = gtfsData.stops.get(stopId);
-    if (s) stops.push(s);
+    if (!s) continue;
+    const directions = [...(stopDirections.get(stopId) || [])].sort((a, b) => a - b);
+    stops.push({ ...s, directions });
   }
   stops.sort((a, b) => a.stop_name.localeCompare(b.stop_name));
   res.json(stops);

@@ -7,6 +7,7 @@ import {
   pickCanonicalShapeId,
   pickBestTrip,
   computeActiveServiceIds,
+  computeStopDirections,
 } from '../lib/gtfs-utils.js';
 
 describe('splitCsvLine', () => {
@@ -77,6 +78,55 @@ describe('groupTripsByDirection', () => {
     const { tripsByDir } = groupTripsByDirection(['t1', 'missing'], tripsById);
     assert.equal(Object.keys(tripsByDir).length, 1);
     assert.equal(tripsByDir['0'].length, 1);
+  });
+});
+
+describe('computeStopDirections', () => {
+  test('attributes each stop to the direction(s) that actually serve it', () => {
+    const tripsById = new Map([
+      ['t1', { trip_id: 't1', direction_id: '0' }],
+      ['t2', { trip_id: 't2', direction_id: '1' }],
+    ]);
+    const stopTimes = [
+      { trip_id: 't1', stop_id: 's1' },
+      { trip_id: 't1', stop_id: 's2' },
+      { trip_id: 't2', stop_id: 's2' },
+    ];
+
+    const result = computeStopDirections(stopTimes, tripsById);
+
+    assert.deepEqual([...result.get('s1')], [0]);
+    assert.deepEqual([...result.get('s2')].sort(), [0, 1]);
+  });
+
+  test('defaults missing direction_id to 0 and skips unknown trip ids', () => {
+    const tripsById = new Map([['t1', { trip_id: 't1', direction_id: undefined }]]);
+    const stopTimes = [
+      { trip_id: 't1', stop_id: 's1' },
+      { trip_id: 'missing', stop_id: 's2' },
+    ];
+
+    const result = computeStopDirections(stopTimes, tripsById);
+
+    assert.deepEqual([...result.get('s1')], [0]);
+    assert.equal(result.has('s2'), false);
+  });
+
+  test('picks up a stop only reachable via a rare/non-canonical trip', () => {
+    // The canonical-shape simplification used elsewhere (pickCanonicalShapeId)
+    // doesn't apply here -- this function sees every trip it's handed.
+    const tripsById = new Map([
+      ['main', { trip_id: 'main', direction_id: '0', shape_id: 'shapeA' }],
+      ['shortTurn', { trip_id: 'shortTurn', direction_id: '1', shape_id: 'shapeRare' }],
+    ]);
+    const stopTimes = [
+      { trip_id: 'main', stop_id: 's1' },
+      { trip_id: 'shortTurn', stop_id: 's3' },
+    ];
+
+    const result = computeStopDirections(stopTimes, tripsById);
+
+    assert.deepEqual([...result.get('s3')], [1]);
   });
 });
 
