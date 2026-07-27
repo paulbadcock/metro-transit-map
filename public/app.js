@@ -506,35 +506,7 @@ function updateCommutePanel() {
 }
 
 function computeNextBuses(stopId, limit = 3) {
-  if (!stopId || state.schedule.length === 0) return [];
-
-  const nowMin = nowMinutes();
-  const delayByTrip = buildDelayMap();
-
-  const upcoming = state.schedule
-    .map((s) => {
-      const depMin = timeStringToMinutes(s.departure_time);
-      const delaySeconds =
-        delayByTrip[s.trip_id + "_" + stopId]?.departure_delay ?? 0;
-      const delayMin = Math.round(delaySeconds / 60);
-      const estimatedMin = depMin + delayMin;
-      const minutesAway = estimatedMin - nowMin;
-      return { ...s, depMin, delayMin, estimatedMin, minutesAway };
-    })
-    .filter((s) => s.minutesAway >= -1 && s.minutesAway <= 120)
-    .sort((a, b) => a.minutesAway - b.minutesAway)
-    .slice(0, limit);
-
-  return upcoming;
-}
-
-function buildDelayMap() {
-  // Maps "trip_id_stop_id" -> update
-  const m = {};
-  for (const u of state.allTripUpdates) {
-    if (u.stop_id) m[`${u.trip_id}_${u.stop_id}`] = u;
-  }
-  return m;
+  return NextBuses.computeNextBuses(state.schedule, stopId, state.allTripUpdates, nowMinutes(), limit);
 }
 
 function updateNextBuses(stopId) {
