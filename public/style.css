@@ -471,6 +471,18 @@ html, body {
   height: 28px;
 }
 
+.bus-direction-disc {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+.bus-direction-disc.dir-outbound { background: var(--color-dir-outbound); }
+.bus-direction-disc.dir-inbound  { background: var(--color-dir-inbound); }
+
 .bus-age-badge {
   position: absolute;
   top: -6px;
