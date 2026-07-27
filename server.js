@@ -253,7 +253,7 @@ async function getCached(key, fetchFn) {
 
 // CSP allow-list matches this app's actual resources: Leaflet is loaded
 // from unpkg.com (its CSS also pulls marker icons from there), map tiles
-// come from OpenStreetMap's lettered subdomains, and everything else
+// come from CARTO's lettered basemap subdomains, and everything else
 // (API calls, our own scripts/styles) is same-origin.
 app.use(helmet({
   contentSecurityPolicy: {
@@ -261,10 +261,15 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", 'https://unpkg.com'],
       styleSrc: ["'self'", 'https://unpkg.com', "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:', 'https://unpkg.com', 'https://*.tile.openstreetmap.org'],
+      imgSrc: ["'self'", 'data:', 'https://unpkg.com', 'https://*.basemaps.cartocdn.com'],
       connectSrc: ["'self'"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
+      // Helmet includes this in its CSP defaults, which would otherwise make
+      // browsers rewrite every http:// subresource request to https:// --
+      // breaking asset loading since this app is only ever served over plain
+      // HTTP (locally and via the current Docker setup, neither terminate TLS).
+      upgradeInsecureRequests: null,
     },
   },
 }));

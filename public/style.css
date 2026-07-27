@@ -498,11 +498,39 @@ html, body {
 .bus-delay-badge.early { color: var(--color-success); }
 
 .stop-marker {
-  width: 10px;
-  height: 10px;
+  width: 16px;
+  height: 16px;
   background: #aaa;
   border: 2px solid white;
   border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.stop-popup-times {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stop-popup-time-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+
+.stop-popup-time {
+  font-weight: 600;
+}
+
+.stop-popup-headsign {
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ─── Scrollbar ─────────────────────────────────────────────────────────────── */
