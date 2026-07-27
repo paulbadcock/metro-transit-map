@@ -19,6 +19,9 @@
   --color-border: rgba(255,255,255,0.08);
   --color-success: #4caf50;
   --color-warning: #ff9800;
+  --color-dir-outbound: #2f8fd1;
+  --color-dir-inbound: #d18f2f;
+  --color-dir-shared: #8a8f98;
   --radius: 8px;
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
@@ -524,6 +527,9 @@ html, body {
   border-radius: 50%;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
+.stop-marker.dir-outbound { background: var(--color-dir-outbound); }
+.stop-marker.dir-inbound  { background: var(--color-dir-inbound); }
+.stop-marker.dir-shared   { background: var(--color-dir-shared); }
 
 .stop-popup-times {
   margin-top: 6px;

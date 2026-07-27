@@ -110,9 +110,15 @@ function getTripDelayMinutes(tripId) {
   return delaySeconds != null ? Math.round(delaySeconds / 60) : null;
 }
 
-function makeStopIcon() {
+function stopDirectionClass(directions) {
+  if (!directions || directions.length === 0) return "";
+  if (directions.length > 1) return "dir-shared";
+  return directions[0] === 1 ? "dir-inbound" : "dir-outbound";
+}
+
+function makeStopIcon(directions) {
   return L.divIcon({
-    className: "stop-marker",
+    className: `stop-marker ${stopDirectionClass(directions)}`,
     iconSize: [16, 16],
     iconAnchor: [8, 8],
   });
@@ -338,7 +344,7 @@ function drawStopMarkers() {
   for (const s of state.stops) {
     if (!s.stop_lat || !s.stop_lon) continue;
     const m = L.marker([s.stop_lat, s.stop_lon], {
-      icon: makeStopIcon(),
+      icon: makeStopIcon(s.directions),
       title: s.stop_name,
     })
       .bindPopup(buildStopPopup(s.stop_name, s.stop_id, null))
