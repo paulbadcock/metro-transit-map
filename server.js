@@ -301,6 +301,11 @@ app.get('/api/vehicles', async (req, res) => {
       if (vehicleRouteId && vehicleRouteId !== routeId) continue;
       if (!vehicleRouteId && tripId && !tripIds.has(tripId)) continue;
 
+      const trip = tripId ? gtfsData.trips.get(tripId) : null;
+      const directionId = trip && trip.direction_id !== undefined && trip.direction_id !== ''
+        ? parseInt(trip.direction_id, 10)
+        : null;
+
       vehicles.push({
         id: entity.id,
         lat: vp.position?.latitude,
@@ -309,6 +314,7 @@ app.get('/api/vehicles', async (req, res) => {
         speed: vp.position?.speed,
         trip_id: vp.trip?.tripId,
         route_id: vehicleRouteId,
+        direction_id: directionId,
         timestamp: vp.timestamp ? Number(vp.timestamp) : null,
         label: vp.vehicle?.label,
       });
