@@ -467,6 +467,7 @@ async function switchRoute() {
   await checkAlerts();
 }
 
+// eslint-disable-next-line no-unused-vars -- called from an inline onclick= in the bus-item markup above
 function panToBus(id) {
   const v = state.vehicles.find((x) => x.id === id);
   if (v && v.lat && v.lon) {
@@ -553,7 +554,7 @@ function updateNextBuses(stopId) {
       if (ma <= 2) countdownClass = "countdown-imminent";
       else if (ma <= 8) countdownClass = "countdown-soon";
 
-      let delayHtml = "";
+      let delayHtml;
       if (s.delayMin > 1) {
         delayHtml = `<div class="delay late">+${s.delayMin} min late</div>`;
       } else if (s.delayMin < -1) {
