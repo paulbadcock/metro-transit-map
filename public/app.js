@@ -54,10 +54,11 @@ const map = L.map("map", {
   zoomControl: true,
 }).setView(HALIFAX_CENTER, 13);
 
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
   attribution:
-    '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  maxZoom: 19,
+    '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+  maxZoom: 20,
+  subdomains: "abcd",
 }).addTo(map);
 
 // ─── Bus Icon ─────────────────────────────────────────────────────────────────
@@ -111,8 +112,8 @@ function getTripDelayMinutes(tripId) {
 function makeStopIcon() {
   return L.divIcon({
     className: "stop-marker",
-    iconSize: [10, 10],
-    iconAnchor: [5, 5],
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
   });
 }
 
@@ -339,9 +340,53 @@ function drawStopMarkers() {
       icon: makeStopIcon(),
       title: s.stop_name,
     })
-      .bindPopup(`<strong>${escapeHtml(s.stop_name)}</strong><br>Stop #${escapeHtml(s.stop_id)}`)
+      .bindPopup(buildStopPopup(s.stop_name, s.stop_id, null))
       .addTo(map);
+    m.on("popupopen", () => loadStopPopupTimes(m, s.stop_id, s.stop_name));
     state.stopMarkers.push(m);
+  }
+}
+
+// Times pane is `null` while loading, an array (possibly empty) once fetched.
+function buildStopPopup(stopName, stopId, upcoming) {
+  const header = `<strong>${escapeHtml(stopName)}</strong><br>Stop #${escapeHtml(stopId)}`;
+
+  let timesHtml;
+  if (upcoming === null) {
+    timesHtml = `<div class="stop-popup-times empty-state">Loading times…</div>`;
+  } else if (upcoming.length === 0) {
+    timesHtml = `<div class="stop-popup-times empty-state">No upcoming departures</div>`;
+  } else {
+    timesHtml = `<div class="stop-popup-times">${upcoming
+      .map((s) => {
+        let delayHtml = `<span class="delay ontime">On time</span>`;
+        if (s.delayMin > 1) delayHtml = `<span class="delay late">+${s.delayMin} min</span>`;
+        else if (s.delayMin < -1) delayHtml = `<span class="delay early">${s.delayMin} min</span>`;
+
+        return `
+          <div class="stop-popup-time-row">
+            <span class="stop-popup-time">${formatTime12(minutesToTimeString(s.estimatedMin))}</span>
+            ${delayHtml}
+            <span class="stop-popup-headsign">${escapeHtml(s.trip_headsign || "")}</span>
+          </div>`;
+      })
+      .join("")}</div>`;
+  }
+
+  return `${header}${timesHtml}`;
+}
+
+async function loadStopPopupTimes(marker, stopId, stopName) {
+  try {
+    const schedule = await apiFetch(
+      `/api/schedule?stop_id=${encodeURIComponent(stopId)}&route_id=${encodeURIComponent(currentRouteId())}`,
+    );
+    const upcoming = NextBuses.computeNextBuses(schedule, stopId, state.allTripUpdates, nowMinutes(), 5);
+    marker.setPopupContent(buildStopPopup(stopName, stopId, upcoming));
+  } catch (err) {
+    marker.setPopupContent(
+      `<strong>${escapeHtml(stopName)}</strong><br>Stop #${escapeHtml(stopId)}<br><span class="empty-state">Couldn't load times</span>`,
+    );
   }
 }
 
