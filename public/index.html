@@ -32,58 +32,58 @@
         <div id="status-dot" title="Connection status"></div>
       </div>
 
-      <!-- Tab Navigation -->
-      <nav id="tabs" role="tablist">
-        <button id="tabbtn-map" class="tab-btn active" data-tab="map" role="tab" aria-selected="true" aria-controls="tab-map">Map</button>
-        <button id="tabbtn-commute" class="tab-btn" data-tab="commute" role="tab" aria-selected="false" aria-controls="tab-commute">Commute</button>
-        <button id="tabbtn-settings" class="tab-btn" data-tab="settings" role="tab" aria-selected="false" aria-controls="tab-settings">Settings</button>
-      </nav>
-
-      <!-- Tab: Map Controls -->
-      <div id="tab-map" class="tab-panel active" role="tabpanel" aria-labelledby="tabbtn-map">
-        <div class="panel-section">
-          <div class="section-label">Live Buses</div>
-          <div class="direction-legend">
-            <span><span class="swatch outbound"></span>Outbound</span>
-            <span><span class="swatch inbound"></span>Inbound</span>
-            <span><span class="swatch shared"></span>Both directions</span>
-          </div>
-          <div id="bus-list">
-            <div class="empty-state">Loading bus positions...</div>
-          </div>
-        </div>
-        <div class="panel-section">
-          <div class="section-label">Traffic</div>
-          <button id="traffic-toggle-btn" class="btn-secondary" type="button">Show Live Traffic</button>
-          <div id="traffic-unavailable-note" class="muted-text" hidden>Traffic layer not configured on server (set TOMTOM_API_KEY).</div>
-        </div>
-        <div class="panel-section">
-          <div id="last-update" class="muted-text">–</div>
-          <button id="refresh-btn" class="btn-secondary">Refresh Now</button>
-        </div>
+      <!-- Always-visible toolbar: stays on screen even with the sidebar collapsed -->
+      <div id="sidebar-minibar">
+        <button id="traffic-toggle-btn" class="minibar-btn" type="button" title="Toggle live traffic overlay">Traffic</button>
+        <button id="refresh-btn" class="minibar-btn" type="button" title="Refresh bus positions">Refresh</button>
+        <div id="last-update" class="muted-text">–</div>
+        <button id="sidebar-toggle-btn" type="button" aria-expanded="false" aria-label="Expand sidebar" title="Expand sidebar">▾</button>
       </div>
 
-      <!-- Tab: Commute -->
-      <div id="tab-commute" class="tab-panel" role="tabpanel" aria-labelledby="tabbtn-commute">
-        <div id="commute-direction-indicator" class="direction-badge"></div>
+      <div id="sidebar-body">
+        <!-- Tab Navigation -->
+        <nav id="tabs" role="tablist">
+          <button id="tabbtn-map" class="tab-btn active" data-tab="map" role="tab" aria-selected="true" aria-controls="tab-map">Map</button>
+          <button id="tabbtn-commute" class="tab-btn" data-tab="commute" role="tab" aria-selected="false" aria-controls="tab-commute">Commute</button>
+          <button id="tabbtn-settings" class="tab-btn" data-tab="settings" role="tab" aria-selected="false" aria-controls="tab-settings">Settings</button>
+        </nav>
 
-        <div id="next-buses-section" class="panel-section">
-          <div class="section-label">Next Buses</div>
-          <div id="next-buses">
-            <div class="empty-state">Configure a stop in Settings to see upcoming buses.</div>
+        <!-- Tab: Map Controls -->
+        <div id="tab-map" class="tab-panel active" role="tabpanel" aria-labelledby="tabbtn-map">
+          <div class="panel-section">
+            <div class="section-label">Live Buses</div>
+            <div class="direction-legend">
+              <span><span class="swatch outbound"></span>Outbound</span>
+              <span><span class="swatch inbound"></span>Inbound</span>
+              <span><span class="swatch shared"></span>Both directions</span>
+            </div>
+            <div id="bus-list">
+              <div class="empty-state">Loading bus positions...</div>
+            </div>
           </div>
         </div>
 
-        <div class="panel-section">
-          <div class="section-label">All Today's Trips</div>
-          <div id="schedule-list">
-            <div class="empty-state">–</div>
+        <!-- Tab: Commute -->
+        <div id="tab-commute" class="tab-panel" role="tabpanel" aria-labelledby="tabbtn-commute">
+          <div id="commute-direction-indicator" class="direction-badge"></div>
+
+          <div id="next-buses-section" class="panel-section">
+            <div class="section-label">Next Buses</div>
+            <div id="next-buses">
+              <div class="empty-state">Configure a stop in Settings to see upcoming buses.</div>
+            </div>
+          </div>
+
+          <div class="panel-section">
+            <div class="section-label">All Today's Trips</div>
+            <div id="schedule-list">
+              <div class="empty-state">–</div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- Tab: Settings -->
-      <div id="tab-settings" class="tab-panel" role="tabpanel" aria-labelledby="tabbtn-settings">
+        <!-- Tab: Settings -->
+        <div id="tab-settings" class="tab-panel" role="tabpanel" aria-labelledby="tabbtn-settings">
         <form id="settings-form">
           <div class="panel-section">
             <div class="section-label">Morning Commute</div>
@@ -148,6 +148,7 @@
           <a href="/api/status" target="_blank" class="debug-link">API Status</a>
           <a href="/api/vehicles" target="_blank" class="debug-link">Vehicle Feed</a>
         </div>
+      </div>
       </div>
     </div>
 
