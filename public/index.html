@@ -29,21 +29,24 @@
             <option value="">Loading routes…</option>
           </select>
         </div>
-        <div id="status-dot" title="Connection status"></div>
-      </div>
 
-      <!-- Always-visible toolbar: stays on screen even with the sidebar collapsed -->
-      <div id="sidebar-minibar">
-        <button id="traffic-toggle-btn" class="minibar-btn" type="button" title="Toggle live traffic overlay">Traffic</button>
-        <button id="refresh-btn" class="minibar-btn" type="button" title="Refresh bus positions">Refresh</button>
-        <div id="last-update" class="muted-text">–</div>
-        <button id="sidebar-toggle-btn" type="button" aria-expanded="false" aria-label="Expand sidebar" title="Expand sidebar">▾</button>
+        <!-- Always-visible controls: stay on screen even with the sidebar collapsed -->
+        <div id="header-controls">
+          <button id="traffic-toggle-btn" class="minibar-btn" type="button" title="Toggle live traffic overlay">Traffic</button>
+          <button id="refresh-btn" class="minibar-btn" type="button" title="Refresh bus positions">Refresh</button>
+          <span id="last-update" class="muted-text">–</span>
+        </div>
+
+        <div id="header-right">
+          <div id="status-dot" title="Connection status"></div>
+          <button id="sidebar-toggle-btn" type="button" aria-expanded="false" aria-label="Expand sidebar" title="Expand sidebar">▾</button>
+        </div>
       </div>
 
       <div id="sidebar-body">
         <!-- Tab Navigation -->
         <nav id="tabs" role="tablist">
-          <button id="tabbtn-map" class="tab-btn active" data-tab="map" role="tab" aria-selected="true" aria-controls="tab-map">Map</button>
+          <button id="tabbtn-map" class="tab-btn active" data-tab="map" role="tab" aria-selected="true" aria-controls="tab-map">Buses</button>
           <button id="tabbtn-commute" class="tab-btn" data-tab="commute" role="tab" aria-selected="false" aria-controls="tab-commute">Commute</button>
           <button id="tabbtn-settings" class="tab-btn" data-tab="settings" role="tab" aria-selected="false" aria-controls="tab-settings">Settings</button>
         </nav>
@@ -55,7 +58,21 @@
             <div class="direction-legend">
               <span><span class="swatch outbound"></span>Outbound</span>
               <span><span class="swatch inbound"></span>Inbound</span>
-              <span><span class="swatch shared"></span>Both directions</span>
+              <button id="legend-info-btn" class="legend-info-btn" type="button" aria-expanded="false" aria-controls="legend-detail" title="What does the bus icon mean?">ⓘ</button>
+            </div>
+            <div id="legend-detail" class="legend-detail" hidden>
+              <div class="bus-marker-wrap legend-sample">
+                <div class="bus-direction-disc dir-outbound"></div>
+                <div class="bus-marker-icon delay-late severe">🚌</div>
+                <div class="bus-age-badge">12s</div>
+                <div class="bus-delay-badge late">+6m</div>
+              </div>
+              <ul class="legend-detail-list">
+                <li><strong>Disc color</strong> — direction of travel (see above)</li>
+                <li><strong>Top-right time</strong> — seconds since the last real-time position update</li>
+                <li><strong>Bottom-left time</strong> — minutes ahead/behind schedule, as reported by Metro Transit's real-time feed (not calculated by this app)</li>
+                <li><strong>Flashing icon</strong> — running 5+ minutes late</li>
+              </ul>
             </div>
             <div id="bus-list">
               <div class="empty-state">Loading bus positions...</div>
@@ -121,6 +138,14 @@
                 <input type="time" id="evening-end" value="18:30" />
               </div>
             </div>
+          </div>
+
+          <div class="panel-section">
+            <div class="section-label">Traffic</div>
+            <label class="toggle-label">
+              <input type="checkbox" id="auto-traffic-enable" />
+              <span>Always load live traffic on open</span>
+            </label>
           </div>
 
           <div class="panel-section">

@@ -21,7 +21,6 @@
   --color-warning: #ff9800;
   --color-dir-outbound: #2f8fd1;
   --color-dir-inbound: #d18f2f;
-  --color-dir-shared: #8a8f98;
   --radius: 8px;
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
@@ -142,13 +141,16 @@ html, body {
 }
 
 /* ─── Sidebar Header ────────────────────────────────────────────────────────── */
+/* Single row: logo+route, then always-visible controls, then status+collapse
+   toggle -- kept as one bar (not two) so the collapsed state stays compact. */
 #sidebar-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 16px;
+  gap: 16px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-bg);
+  flex-wrap: wrap;
 }
 
 #logo {
@@ -158,6 +160,7 @@ html, body {
   font-size: 18px;
   font-weight: 700;
   letter-spacing: 0.5px;
+  flex-shrink: 0;
 }
 
 .bus-icon {
@@ -191,14 +194,14 @@ html, body {
   font-size: 14px;
 }
 
-/* ─── Sidebar Minibar (always visible, even collapsed) ─────────────────────── */
-#sidebar-minibar {
+/* Always-visible controls (traffic/refresh), inline in the header row so a
+   collapsed sidebar is still just one bar. */
+#header-controls {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-bg);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .minibar-btn {
@@ -224,15 +227,22 @@ html, body {
   cursor: not-allowed;
 }
 
-#sidebar-minibar #last-update {
+#last-update {
   font-size: 11px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-#sidebar-toggle-btn {
+#header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-left: auto;
+  flex-shrink: 0;
+}
+
+#sidebar-toggle-btn {
   flex-shrink: 0;
   background: transparent;
   border: 1px solid var(--color-border);
@@ -251,6 +261,7 @@ html, body {
   border-radius: 50%;
   background: var(--color-text-muted);
   transition: background 0.3s;
+  flex-shrink: 0;
 }
 #status-dot.green { background: var(--color-success); }
 #status-dot.red   { background: var(--color-accent); }
@@ -665,7 +676,6 @@ html, body {
 }
 .stop-marker.dir-outbound { background: var(--color-dir-outbound); }
 .stop-marker.dir-inbound  { background: var(--color-dir-inbound); }
-.stop-marker.dir-shared   { background: var(--color-dir-shared); }
 
 .stop-popup-times {
   margin-top: 6px;
@@ -713,7 +723,51 @@ html, body {
 }
 .direction-legend .swatch.outbound { background: var(--color-dir-outbound); }
 .direction-legend .swatch.inbound  { background: var(--color-dir-inbound); }
-.direction-legend .swatch.shared   { background: var(--color-dir-shared); }
+
+.legend-info-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  line-height: 1;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.2s, border-color 0.2s;
+}
+.legend-info-btn:hover,
+.legend-info-btn[aria-expanded="true"] {
+  color: var(--color-text);
+  border-color: var(--color-text-muted);
+}
+
+.legend-detail {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 4px 0 12px;
+  padding: 10px;
+  background: var(--color-surface2);
+  border-radius: var(--radius);
+}
+.legend-detail .legend-sample {
+  flex-shrink: 0;
+  /* Badges bleed past the icon's own box -- extra margin keeps them from
+     visually touching the panel edge. */
+  margin: 6px 14px;
+}
+.legend-detail-list {
+  list-style: none;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+}
+.legend-detail-list strong {
+  color: var(--color-text);
+}
 
 /* ─── Scrollbar ─────────────────────────────────────────────────────────────── */
 #sidebar::-webkit-scrollbar { width: 4px; }
