@@ -8,6 +8,7 @@ services:
       - gtfs-data:/app/data/gtfs
     environment:
       - PORT=4040
+      - TOMTOM_API_KEY=${TOMTOM_API_KEY:-}
     labels:
       - "com.centurylinklabs.watchtower.enable=false"
     restart: unless-stopped

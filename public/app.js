@@ -23,6 +23,7 @@ const state = {
   lastVehicleFetch: null,
   fetchErrors: 0,
   serviceStatus: null,
+  trafficLayer: null, // L.tileLayer, present only while the overlay is on
 };
 
 // ─── Settings (persisted in localStorage) ────────────────────────────────────
@@ -437,6 +438,51 @@ async function loadStopPopupTimes(marker, stopId, stopName) {
       `<strong>${escapeHtml(stopName)}</strong><br>Stop #${escapeHtml(stopId)}<br><span class="empty-state">Couldn't load times</span>`,
     );
   }
+}
+
+// ─── Map: Live Traffic ────────────────────────────────────────────────────────
+// Tiles are proxied through our own /api/traffic-tile route so the TomTom API
+// key stays server-side. Off by default -- this is a sanity-check overlay to
+// spot congestion the GTFS-RT feed's delay data isn't reflecting yet, not
+// data the app depends on.
+async function initTrafficControl() {
+  const btn = document.getElementById("traffic-toggle-btn");
+  const note = document.getElementById("traffic-unavailable-note");
+
+  let trafficEnabled = false;
+  try {
+    const config = await apiFetch("/api/config");
+    trafficEnabled = Boolean(config.trafficEnabled);
+  } catch (err) {
+    console.warn("[BusTracker] Could not load config:", err);
+  }
+
+  if (!trafficEnabled) {
+    btn.disabled = true;
+    note.hidden = false;
+    return;
+  }
+
+  btn.addEventListener("click", toggleTraffic);
+}
+
+function toggleTraffic() {
+  const btn = document.getElementById("traffic-toggle-btn");
+
+  if (state.trafficLayer) {
+    map.removeLayer(state.trafficLayer);
+    state.trafficLayer = null;
+    btn.textContent = "Show Live Traffic";
+    btn.classList.remove("active");
+    return;
+  }
+
+  state.trafficLayer = L.tileLayer("/api/traffic-tile/{z}/{x}/{y}", {
+    maxZoom: 20,
+    opacity: 0.65,
+  }).addTo(map);
+  btn.textContent = "Hide Live Traffic";
+  btn.classList.add("active");
 }
 
 // ─── Map: Route Polylines ─────────────────────────────────────────────────────
@@ -1049,6 +1095,7 @@ async function init() {
   }
 
   applySettingsToForm();
+  await initTrafficControl();
 
   // Request notification permission up front if enabled
   if (settings.notifEnable && Notification.permission === "default") {

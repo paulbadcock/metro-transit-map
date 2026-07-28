@@ -50,6 +50,13 @@ const VEHICLE_POSITIONS_URL = 'https://gtfs.halifax.ca/realtime/Vehicle/VehicleP
 const TRIP_UPDATES_URL = 'https://gtfs.halifax.ca/realtime/TripUpdate/TripUpdates.pb';
 const ALERTS_URL = 'https://gtfs.halifax.ca/realtime/Alert/Alerts.pb';
 
+// Optional: enables the live traffic overlay. Get a free key at
+// https://developer.tomtom.com and set TOMTOM_API_KEY in the environment --
+// the key stays server-side, tiles are proxied through /api/traffic-tile so
+// it's never exposed to the browser.
+const TOMTOM_API_KEY = process.env.TOMTOM_API_KEY || '';
+const TOMTOM_TRAFFIC_TILE_BASE = 'https://api.tomtom.com/traffic/map/4/tile/flow/relative';
+
 // In-memory caches
 const cache = {
   vehicles: { data: null, ts: 0, ttl: 15000 },
@@ -393,6 +400,35 @@ app.get('/api/alerts', async (req, res) => {
   } catch (err) {
     console.error('Error fetching alerts:', err.message);
     res.status(502).json({ error: 'Failed to fetch service alerts' });
+  }
+});
+
+app.get('/api/config', (req, res) => {
+  res.json({ trafficEnabled: Boolean(TOMTOM_API_KEY) });
+});
+
+app.get('/api/traffic-tile/:z/:x/:y', async (req, res) => {
+  if (!TOMTOM_API_KEY) {
+    return res.status(503).json({ error: 'Traffic layer is not configured' });
+  }
+
+  const { z, x, y } = req.params;
+  if (![z, x, y].every(v => /^\d+$/.test(v))) {
+    return res.status(400).json({ error: 'Invalid tile coordinates' });
+  }
+
+  try {
+    const url = `${TOMTOM_TRAFFIC_TILE_BASE}/${z}/${x}/${y}.png?key=${TOMTOM_API_KEY}`;
+    const tileRes = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!tileRes.ok) {
+      return res.status(502).json({ error: 'Failed to fetch traffic tile' });
+    }
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'public, max-age=60');
+    res.send(Buffer.from(await tileRes.arrayBuffer()));
+  } catch (err) {
+    console.error('Error fetching traffic tile:', err.message);
+    res.status(502).json({ error: 'Failed to fetch traffic tile' });
   }
 });
 
