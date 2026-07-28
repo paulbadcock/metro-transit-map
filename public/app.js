@@ -19,6 +19,7 @@ const state = {
   selectedTripStops: [],
   selectedTripDirectionId: null,
   routePolylines: [],
+  routePolylinesByDirection: new Map(), // direction_id -> L.Polyline
   activeTab: "map",
   lastVehicleFetch: null,
   fetchErrors: 0,
@@ -279,6 +280,7 @@ function selectBus(id) {
     state.selectedTripDirectionId = null;
     drawStopMarkers();
   }
+  updateRouteFlowHighlight();
 }
 
 async function fetchRoutePolyline() {
@@ -512,6 +514,7 @@ const DIR_INBOUND_COLOR = "#d18f2f";
 function drawRoutePolylines(directions) {
   for (const pl of state.routePolylines) pl.remove();
   state.routePolylines = [];
+  state.routePolylinesByDirection.clear();
 
   directions.forEach((dir) => {
     // Prefer shape track (follows roads); fall back to straight stop-to-stop lines
@@ -534,12 +537,28 @@ function drawRoutePolylines(directions) {
       )
       .addTo(map);
     state.routePolylines.push(pl);
+    state.routePolylinesByDirection.set(dir.direction_id, pl);
   });
 
   // Fit map to route if we have polylines
   if (state.routePolylines.length > 0) {
     const group = L.featureGroup(state.routePolylines);
     map.fitBounds(group.getBounds().pad(0.1));
+  }
+
+  updateRouteFlowHighlight();
+}
+
+// While a bus is selected, animate flowing dashes along its direction's line
+// -- in the same order as the trip's own stop/shape sequence, so the flow
+// always moves toward where that bus is headed -- and dim the other
+// direction for contrast. With nothing selected, both lines sit at rest.
+function updateRouteFlowHighlight() {
+  const activeDir = state.selectedTripDirectionId;
+  for (const [dirId, pl] of state.routePolylinesByDirection) {
+    const isActive = activeDir != null && dirId === activeDir;
+    pl.getElement()?.classList.toggle("route-flow-active", isActive);
+    pl.setStyle({ opacity: activeDir == null ? 0.6 : isActive ? 0.9 : 0.2 });
   }
 }
 
@@ -602,6 +621,7 @@ async function switchRoute() {
   state.selectedTripDirectionId = null;
   for (const pl of state.routePolylines) pl.remove();
   state.routePolylines = [];
+  state.routePolylinesByDirection.clear();
 
   // Clear data
   state.vehicles = [];

@@ -185,6 +185,17 @@ html, body {
   50%       { opacity: 0.3; }
 }
 
+/* Flowing dashes along the selected bus's direction line, animating toward
+   where the trip ends up. The path's points run start-to-end in travel
+   order, and a decreasing dash-offset makes the pattern march the same way. */
+.route-flow-active {
+  stroke-dasharray: 12 10;
+  animation: route-flow 0.6s linear infinite;
+}
+@keyframes route-flow {
+  to { stroke-dashoffset: -22; }
+}
+
 /* ─── Tabs ──────────────────────────────────────────────────────────────────── */
 #tabs {
   display: flex;
