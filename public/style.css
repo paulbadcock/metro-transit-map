@@ -427,6 +427,15 @@ html, body {
   margin-top: 8px;
 }
 .btn-secondary:hover { background: var(--color-accent2); }
+.btn-secondary.active {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 .save-indicator {
   text-align: center;

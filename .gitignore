@@ -1,2 +1,5 @@
 node_modules/
 data/gtfs/
+.env
+.env.*
+!.env.example
