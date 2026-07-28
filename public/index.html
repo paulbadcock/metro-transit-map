@@ -25,7 +25,9 @@
       <div id="sidebar-header">
         <div id="logo">
           <span class="bus-icon">🚌</span>
-          <span>Route 194</span>
+          <select id="route-select" class="route-select-header">
+            <option value="">Loading routes…</option>
+          </select>
         </div>
         <div id="status-dot" title="Connection status"></div>
       </div>
@@ -83,13 +85,6 @@
       <!-- Tab: Settings -->
       <div id="tab-settings" class="tab-panel" role="tabpanel" aria-labelledby="tabbtn-settings">
         <form id="settings-form">
-          <div class="panel-section">
-            <div class="section-label">Route</div>
-            <select id="route-select" class="stop-select">
-              <option value="">Loading routes…</option>
-            </select>
-          </div>
-
           <div class="panel-section">
             <div class="section-label">Morning Commute</div>
             <label class="field-label">Boarding Stop</label>
