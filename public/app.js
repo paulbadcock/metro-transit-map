@@ -22,6 +22,7 @@ const state = {
   routePolylinesByDirection: new Map(), // direction_id -> L.Polyline
   activeTab: "map",
   lastVehicleFetch: null,
+  nextVehicleRefreshAt: null, // ms epoch -- when the next scheduled poll fires
   fetchErrors: 0,
   serviceStatus: null,
   trafficLayer: null, // L.tileLayer, present only while the overlay is on
@@ -235,9 +236,9 @@ async function apiFetch(url) {
   return res.json();
 }
 
-async function fetchVehicles() {
+async function fetchVehicles(force = false) {
   state.vehicles = await apiFetch(
-    `/api/vehicles?route_id=${encodeURIComponent(currentRouteId())}`,
+    `/api/vehicles?route_id=${encodeURIComponent(currentRouteId())}${force ? "&force=true" : ""}`,
   );
   state.lastVehicleFetch = new Date();
   updateVehicleMarkers();
@@ -245,9 +246,9 @@ async function fetchVehicles() {
   updateStatusDot(true);
 }
 
-async function fetchTripUpdates() {
+async function fetchTripUpdates(force = false) {
   state.allTripUpdates = await apiFetch(
-    `/api/trip-updates?route_id=${encodeURIComponent(currentRouteId())}`,
+    `/api/trip-updates?route_id=${encodeURIComponent(currentRouteId())}${force ? "&force=true" : ""}`,
   );
 }
 
@@ -1011,13 +1012,21 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
 });
 
 // ─── Refresh Button ───────────────────────────────────────────────────────────
+// force=true bypasses the server's 15s cache, so this always pulls a fresh
+// read from Halifax's live feed rather than possibly replaying whatever the
+// last poll (from this tab or another) already cached.
 document.getElementById("refresh-btn").addEventListener("click", async () => {
   try {
-    await Promise.all([fetchVehicles(), fetchTripUpdates()]);
+    await Promise.all([fetchVehicles(true), fetchTripUpdates(true)]);
     updateCommutePanel();
   } catch (err) {
     console.error("Refresh error:", err);
     updateStatusDot(false);
+  } finally {
+    // A manual refresh just happened -- restart the countdown from a full
+    // 15s instead of leaving it on the original interval's phase.
+    scheduleVehiclePoll();
+    updateNextRefreshCountdown();
   }
 });
 
@@ -1134,6 +1143,28 @@ async function pollVehicles() {
   }
 }
 
+// Self-rescheduling (rather than setInterval) so a manual Refresh can reset
+// the countdown to a full 15s instead of it staying on whatever phase the
+// original interval happened to be in.
+let vehiclePollTimer = null;
+const VEHICLE_POLL_INTERVAL_MS = 15_000;
+
+function scheduleVehiclePoll(delayMs = VEHICLE_POLL_INTERVAL_MS) {
+  if (vehiclePollTimer) clearTimeout(vehiclePollTimer);
+  state.nextVehicleRefreshAt = Date.now() + delayMs;
+  vehiclePollTimer = setTimeout(async () => {
+    await pollVehicles();
+    scheduleVehiclePoll();
+  }, delayMs);
+}
+
+function updateNextRefreshCountdown() {
+  const el = document.getElementById("next-refresh");
+  if (!el || state.nextVehicleRefreshAt == null) return;
+  const secondsLeft = Math.max(0, Math.round((state.nextVehicleRefreshAt - Date.now()) / 1000));
+  el.textContent = `Next refresh in ${secondsLeft}s`;
+}
+
 async function pollTripUpdates() {
   try {
     await fetchTripUpdates();
@@ -1245,10 +1276,12 @@ async function init() {
   await checkAlerts();
 
   // Start polling
-  setInterval(pollVehicles, 15_000);
+  scheduleVehiclePoll();
+  updateNextRefreshCountdown();
   setInterval(pollTripUpdates, 15_000);
   setInterval(tickCommutePanel, 15_000);
   setInterval(tickBusAges, 1_000);
+  setInterval(updateNextRefreshCountdown, 1_000);
   setInterval(checkServiceStatus, 5 * 60_000);
   setInterval(checkAlerts, 5 * 60_000);
 
