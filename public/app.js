@@ -75,9 +75,25 @@ function busDirectionClass(directionId) {
   return null;
 }
 
+// The bus glyph is a flat side-view drawing (front on one side, wheels on
+// the bottom), not a rotationally-symmetric arrow -- rotating it more than
+// a quarter turn from its native pose flips it wheels-up instead of turning
+// it to face the new heading. Beyond +/-90 degrees we mirror the glyph
+// horizontally instead and rotate by the much smaller remaining angle, so
+// it stays right-side up for every bearing.
+function busIconTransform(bearing) {
+  if (bearing == null) return "";
+
+  const normalize = (deg) => (((deg + 180) % 360) + 360) % 360 - 180;
+  let r = normalize(bearing + 90);
+
+  if (r > 90) return `transform:scaleX(-1) rotate(${-(r - 180)}deg)`;
+  if (r < -90) return `transform:scaleX(-1) rotate(${-(r + 180)}deg)`;
+  return `transform:rotate(${r}deg)`;
+}
+
 function makeBusIcon(bearing, timestamp, delayMin, directionId) {
-  const rotation =
-    bearing != null ? `transform:rotate(${bearing + 90}deg)` : "";
+  const rotation = busIconTransform(bearing);
   let ageBadge = "";
   if (timestamp) {
     const ageS = Math.round(Date.now() / 1000 - timestamp);
