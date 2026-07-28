@@ -13,6 +13,11 @@ const state = {
   notifiedTripIds: new Set(),
   vehicleMarkers: new Map(), // id -> L.Marker
   stopMarkers: [],
+  // Pickup points stay off the map until a bus is chosen, then show only
+  // that bus's own trip (not the whole route).
+  selectedBusId: null,
+  selectedTripStops: [],
+  selectedTripDirectionId: null,
   routePolylines: [],
   activeTab: "map",
   lastVehicleFetch: null,
@@ -128,8 +133,8 @@ function stopDirectionClass(directions) {
 function makeStopIcon(directions) {
   return L.divIcon({
     className: `stop-marker ${stopDirectionClass(directions)}`,
-    iconSize: [16, 16],
-    iconAnchor: [8, 8],
+    iconSize: [10, 10],
+    iconAnchor: [5, 5],
   });
 }
 
@@ -228,7 +233,35 @@ async function fetchStops() {
     `/api/stops?route_id=${encodeURIComponent(currentRouteId())}`,
   );
   populateStopDropdowns();
+}
+
+// Pickup points stay off the map until the rider picks a specific bus, then
+// show only the stops on that bus's own trip.
+async function fetchTripStops(tripId) {
+  try {
+    state.selectedTripStops = await apiFetch(
+      `/api/trip-stops?trip_id=${encodeURIComponent(tripId)}`,
+    );
+  } catch (err) {
+    console.warn("[BusTracker] Could not load trip stops:", err);
+    state.selectedTripStops = [];
+  }
   drawStopMarkers();
+}
+
+function selectBus(id) {
+  state.selectedBusId = id;
+  highlightBusInList(id);
+
+  const v = state.vehicles.find((x) => x.id === id);
+  if (v && v.trip_id) {
+    state.selectedTripDirectionId = v.direction_id ?? null;
+    fetchTripStops(v.trip_id);
+  } else {
+    state.selectedTripStops = [];
+    state.selectedTripDirectionId = null;
+    drawStopMarkers();
+  }
 }
 
 async function fetchRoutePolyline() {
@@ -285,10 +318,7 @@ function updateVehicleMarkers() {
         .bindPopup(buildBusPopup(v, delayMin))
         .addTo(map);
 
-      marker.on("click", () => {
-        // Highlight in sidebar list
-        highlightBusInList(v.id);
-      });
+      marker.on("click", () => selectBus(v.id));
 
       state.vehicleMarkers.set(v.id, marker);
     }
@@ -350,10 +380,13 @@ function drawStopMarkers() {
   for (const m of state.stopMarkers) m.remove();
   state.stopMarkers = [];
 
-  for (const s of state.stops) {
+  const directions =
+    state.selectedTripDirectionId != null ? [state.selectedTripDirectionId] : [];
+
+  for (const s of state.selectedTripStops) {
     if (!s.stop_lat || !s.stop_lon) continue;
     const m = L.marker([s.stop_lat, s.stop_lon], {
-      icon: makeStopIcon(s.directions),
+      icon: makeStopIcon(directions),
       title: s.stop_name,
     })
       .bindPopup(buildStopPopup(s.stop_name, s.stop_id, null))
@@ -504,6 +537,9 @@ async function switchRoute() {
   state.vehicleMarkers.clear();
   for (const m of state.stopMarkers) m.remove();
   state.stopMarkers = [];
+  state.selectedBusId = null;
+  state.selectedTripStops = [];
+  state.selectedTripDirectionId = null;
   for (const pl of state.routePolylines) pl.remove();
   state.routePolylines = [];
 
@@ -558,6 +594,7 @@ function panToBus(id) {
     map.panTo([v.lat, v.lon], { animate: true, duration: 0.5 });
     state.vehicleMarkers.get(id)?.openPopup();
   }
+  selectBus(id);
 }
 
 // ─── Status Dot ───────────────────────────────────────────────────────────────
