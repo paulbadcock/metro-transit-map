@@ -412,6 +412,23 @@ app.get('/api/stops', (req, res) => {
   res.json(stops);
 });
 
+app.get('/api/trip-stops', (req, res) => {
+  const { trip_id } = req.query;
+  if (!trip_id) return res.status(400).json({ error: 'trip_id required' });
+
+  const stopTimes = [...(gtfsData.stopTimesByTrip.get(trip_id) || [])];
+  stopTimes.sort((a, b) => a.stop_sequence - b.stop_sequence);
+
+  const stops = stopTimes
+    .map(st => {
+      const s = gtfsData.stops.get(st.stop_id);
+      return s ? { ...s, sequence: st.stop_sequence } : null;
+    })
+    .filter(Boolean);
+
+  res.json(stops);
+});
+
 app.get('/api/schedule', (req, res) => {
   const { stop_id, direction, route_id } = req.query;
   if (!stop_id) return res.status(400).json({ error: 'stop_id required' });
