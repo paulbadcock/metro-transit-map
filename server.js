@@ -248,9 +248,9 @@ async function fetchFeed(url) {
   return GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(buf);
 }
 
-async function getCached(key, fetchFn) {
+async function getCached(key, fetchFn, force = false) {
   const c = cache[key];
-  if (c.data && Date.now() - c.ts < c.ttl) return c.data;
+  if (!force && c.data && Date.now() - c.ts < c.ttl) return c.data;
   const data = await fetchFn();
   c.data = data;
   c.ts = Date.now();
@@ -298,7 +298,7 @@ app.get('/api/vehicles', async (req, res) => {
     const routeId = req.query.route_id || '194';
     const { tripIds } = getRouteInfo(routeId);
 
-    const feed = await getCached('vehicles', () => fetchFeed(VEHICLE_POSITIONS_URL));
+    const feed = await getCached('vehicles', () => fetchFeed(VEHICLE_POSITIONS_URL), req.query.force === 'true');
     const vehicles = [];
     for (const entity of feed.entity) {
       const vp = entity.vehicle;
@@ -338,7 +338,7 @@ app.get('/api/trip-updates', async (req, res) => {
     const routeId = req.query.route_id || '194';
     const { tripIds } = getRouteInfo(routeId);
 
-    const feed = await getCached('tripUpdates', () => fetchFeed(TRIP_UPDATES_URL));
+    const feed = await getCached('tripUpdates', () => fetchFeed(TRIP_UPDATES_URL), req.query.force === 'true');
     const updates = [];
     for (const entity of feed.entity) {
       const tu = entity.tripUpdate;
