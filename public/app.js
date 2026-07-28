@@ -25,6 +25,10 @@ const state = {
   fetchErrors: 0,
   serviceStatus: null,
   trafficLayer: null, // L.tileLayer, present only while the overlay is on
+  // Popups get fully rebuilt on every vehicle/trip-update poll (fresh
+  // speed/delay data), so this can't live in the popup's own DOM -- it'd
+  // reset on the next poll tick.
+  busPopupLegendExpanded: false,
 };
 
 // ─── Settings (persisted in localStorage) ────────────────────────────────────
@@ -39,6 +43,7 @@ const DEFAULTS = {
   notifEnable: false,
   notifMinutes: 5,
   sidebarExpanded: false,
+  autoTrafficEnable: false,
 };
 
 function loadSettings() {
@@ -143,15 +148,14 @@ function getTripDelayMinutes(tripId) {
   return delaySeconds != null ? Math.round(delaySeconds / 60) : null;
 }
 
-function stopDirectionClass(directions) {
-  if (!directions || directions.length === 0) return "";
-  if (directions.length > 1) return "dir-shared";
-  return directions[0] === 1 ? "dir-inbound" : "dir-outbound";
+function stopDirectionClass(directionId) {
+  if (directionId == null) return "";
+  return directionId === 1 ? "dir-inbound" : "dir-outbound";
 }
 
-function makeStopIcon(directions) {
+function makeStopIcon(directionId) {
   return L.divIcon({
-    className: `stop-marker ${stopDirectionClass(directions)}`,
+    className: `stop-marker ${stopDirectionClass(directionId)}`,
     iconSize: [10, 10],
     iconAnchor: [5, 5],
   });
@@ -364,7 +368,9 @@ function buildBusPopup(v, delayMin) {
     : "–";
   const ageS = v.timestamp ? Math.round(Date.now() / 1000 - v.timestamp) : null;
   const ageText =
-    ageS != null ? ` <span style="opacity:0.65">(${ageS}s ago)</span>` : "";
+    ageS != null
+      ? ` <span class="popup-age-text" style="opacity:0.65">(${ageS}s ago)</span>`
+      : "";
 
   let delayLine = "";
   if (delayMin != null) {
@@ -378,16 +384,36 @@ function buildBusPopup(v, delayMin) {
     delayLine = `<div class="delay ${cls}">${text}</div>`;
   }
 
+  const legendExpanded = state.busPopupLegendExpanded;
   return `
-    <strong>Route ${escapeHtml(currentRouteId())}</strong><br>
+    <strong>Route ${escapeHtml(currentRouteId())}</strong>
+    <button class="legend-info-btn" type="button" aria-expanded="${legendExpanded}" title="What does the bus icon mean?">ⓘ</button><br>
     Bus #${escapeHtml(v.label || v.id)}<br>
     Trip: ${escapeHtml(v.trip_id || "–")}<br>
     Speed: ${escapeHtml(speed)}<br>
     Updated: ${escapeHtml(ts)}${ageText}<br>
     ${delayLine}
+    <div class="legend-detail popup-legend-detail" ${legendExpanded ? "" : "hidden"}>${document.getElementById("legend-detail").innerHTML}</div>
     <span style="opacity:0.65">Refreshing every 15s</span>
   `;
 }
+
+function toggleInlineLegend(btn) {
+  const detail = btn.closest(".leaflet-popup-content")?.querySelector(".popup-legend-detail");
+  if (!detail) return;
+  state.busPopupLegendExpanded = !state.busPopupLegendExpanded;
+  detail.hidden = !state.busPopupLegendExpanded;
+  btn.setAttribute("aria-expanded", String(state.busPopupLegendExpanded));
+}
+
+// Delegated on the map container rather than bound per-popup: Leaflet popup
+// DOM is created fresh each time a popup opens, so a per-marker listener
+// would need constant rebinding. This also avoids the CSP's
+// script-src-attr 'none', which silently blocks inline onclick=.
+document.getElementById("map").addEventListener("click", (e) => {
+  const btn = e.target.closest(".legend-info-btn");
+  if (btn && btn.closest(".leaflet-popup-content")) toggleInlineLegend(btn);
+});
 
 function highlightBusInList(id) {
   document.querySelectorAll(".bus-item").forEach((el) => {
@@ -400,13 +426,10 @@ function drawStopMarkers() {
   for (const m of state.stopMarkers) m.remove();
   state.stopMarkers = [];
 
-  const directions =
-    state.selectedTripDirectionId != null ? [state.selectedTripDirectionId] : [];
-
   for (const s of state.selectedTripStops) {
     if (!s.stop_lat || !s.stop_lon) continue;
     const m = L.marker([s.stop_lat, s.stop_lon], {
-      icon: makeStopIcon(directions),
+      icon: makeStopIcon(state.selectedTripDirectionId),
       title: s.stop_name,
     })
       .bindPopup(buildStopPopup(s.stop_name, s.stop_id, null))
@@ -482,6 +505,8 @@ async function initTrafficControl() {
   }
 
   btn.addEventListener("click", toggleTraffic);
+
+  if (settings.autoTrafficEnable) toggleTraffic();
 }
 
 function toggleTraffic() {
@@ -587,7 +612,7 @@ function updateBusList() {
   el.innerHTML = state.vehicles
     .map(
       (v) => `
-    <div class="bus-item" data-bus-id="${escapeHtml(v.id)}" onclick="panToBus('${escapeHtml(v.id)}')">
+    <div class="bus-item" data-bus-id="${escapeHtml(v.id)}">
       <div class="bus-badge">${escapeHtml(currentRouteId())}</div>
       <div class="bus-info">
         <div class="bus-label">Bus #${escapeHtml(v.label || v.id)}</div>
@@ -665,7 +690,6 @@ async function switchRoute() {
   await checkAlerts();
 }
 
-// eslint-disable-next-line no-unused-vars -- called from an inline onclick= in the bus-item markup above
 function panToBus(id) {
   const v = state.vehicles.find((x) => x.id === id);
   if (v && v.lat && v.lon) {
@@ -674,6 +698,15 @@ function panToBus(id) {
   }
   selectBus(id);
 }
+
+// Event delegation instead of inline onclick= -- the CSP's script-src-attr
+// 'none' silently blocks inline handlers, and this list is re-rendered
+// wholesale on every vehicle poll anyway, so a single listener on the
+// container is both correct and simpler than rebinding per item.
+document.getElementById("bus-list").addEventListener("click", (e) => {
+  const item = e.target.closest(".bus-item");
+  if (item) panToBus(item.dataset.busId);
+});
 
 // ─── Status Dot ───────────────────────────────────────────────────────────────
 function updateStatusDot(ok) {
@@ -870,6 +903,7 @@ function applySettingsToForm() {
   document.getElementById("evening-end").value = settings.eveningEnd;
   document.getElementById("notif-enable").checked = settings.notifEnable;
   document.getElementById("notif-minutes").value = settings.notifMinutes;
+  document.getElementById("auto-traffic-enable").checked = settings.autoTrafficEnable;
 }
 
 document
@@ -888,6 +922,7 @@ document
     settings.notifMinutes = parseInt(
       document.getElementById("notif-minutes").value,
     );
+    settings.autoTrafficEnable = document.getElementById("auto-traffic-enable").checked;
     saveSettings(settings);
 
     // Request notification permission if enabled
@@ -941,6 +976,15 @@ document.getElementById("sidebar-toggle-btn").addEventListener("click", () => {
   settings.sidebarExpanded = !settings.sidebarExpanded;
   saveSettings(settings);
   applySidebarExpanded(settings.sidebarExpanded);
+});
+
+// ─── Bus Icon Legend (collapsible detail) ─────────────────────────────────────
+document.getElementById("legend-info-btn").addEventListener("click", () => {
+  const btn = document.getElementById("legend-info-btn");
+  const detail = document.getElementById("legend-detail");
+  const expanded = detail.hidden;
+  detail.hidden = !expanded;
+  btn.setAttribute("aria-expanded", String(expanded));
 });
 
 // ─── Tab Switching ────────────────────────────────────────────────────────────
@@ -1118,8 +1162,16 @@ function tickBusAges() {
       }
     }
 
+    // Patch the age text in place too -- rebuilding the whole popup every
+    // second would (a) drop the delay badge, since this tick has no fresh
+    // delayMin to pass in, and (b) reset any interactive state inside it
+    // (e.g. the icon-legend toggle) on every tick.
     if (marker.isPopupOpen()) {
-      marker.getPopup().setContent(buildBusPopup(v));
+      const ageEl = marker.getPopup().getElement()?.querySelector(".popup-age-text");
+      if (ageEl) {
+        const ageS = Math.round(nowSec - v.timestamp);
+        ageEl.textContent = `(${ageS}s ago)`;
+      }
     }
   }
 }
