@@ -95,27 +95,50 @@ html, body {
 }
 
 /* ─── Layout ────────────────────────────────────────────────────────────────── */
+/* Default: sidebar collapsed to a thin top bar so the map is the primary
+   focus. #app.expanded restores the full two-pane (sidebar + map) layout. */
 #app {
   display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
   overflow: hidden;
 }
 
 #sidebar {
-  width: var(--sidebar-width);
+  width: 100%;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   background: var(--color-surface);
-  border-right: 1px solid var(--color-border);
-  overflow-y: auto;
+  border-bottom: 1px solid var(--color-border);
   z-index: 10;
+}
+
+#sidebar-body {
+  display: none;
 }
 
 #map {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+}
+
+#app.expanded {
+  flex-direction: row;
+}
+#app.expanded #sidebar {
+  width: var(--sidebar-width);
+  border-bottom: none;
+  border-right: 1px solid var(--color-border);
+  overflow-y: auto;
+}
+#app.expanded #sidebar-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 /* ─── Sidebar Header ────────────────────────────────────────────────────────── */
@@ -167,6 +190,60 @@ html, body {
   color: var(--color-text);
   font-size: 14px;
 }
+
+/* ─── Sidebar Minibar (always visible, even collapsed) ─────────────────────── */
+#sidebar-minibar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.minibar-btn {
+  background: var(--color-surface2);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.minibar-btn:hover { background: var(--color-accent2); }
+.minibar-btn.active {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+.minibar-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#sidebar-minibar #last-update {
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#sidebar-toggle-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  border-radius: var(--radius);
+  padding: 4px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+#sidebar-toggle-btn:hover { background: var(--color-surface2); }
 
 #status-dot {
   width: 10px;
@@ -645,7 +722,7 @@ html, body {
 
 /* ─── Responsive ────────────────────────────────────────────────────────────── */
 @media (max-width: 600px) {
-  #app { flex-direction: column-reverse; }
-  #sidebar { width: 100%; max-height: 50vh; }
-  #map { flex: 1; }
+  #app.expanded { flex-direction: column-reverse; }
+  #app.expanded #sidebar { width: 100%; max-height: 50vh; }
+  #app.expanded #map { flex: 1; }
 }

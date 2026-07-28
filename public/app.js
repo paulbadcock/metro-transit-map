@@ -38,6 +38,7 @@ const DEFAULTS = {
   eveningEnd: "18:30",
   notifEnable: false,
   notifMinutes: 5,
+  sidebarExpanded: false,
 };
 
 function loadSettings() {
@@ -465,7 +466,6 @@ async function loadStopPopupTimes(marker, stopId, stopName) {
 // data the app depends on.
 async function initTrafficControl() {
   const btn = document.getElementById("traffic-toggle-btn");
-  const note = document.getElementById("traffic-unavailable-note");
 
   let trafficEnabled = false;
   try {
@@ -477,7 +477,7 @@ async function initTrafficControl() {
 
   if (!trafficEnabled) {
     btn.disabled = true;
-    note.hidden = false;
+    btn.title = "Traffic layer not configured on server (set TOMTOM_API_KEY).";
     return;
   }
 
@@ -490,7 +490,6 @@ function toggleTraffic() {
   if (state.trafficLayer) {
     map.removeLayer(state.trafficLayer);
     state.trafficLayer = null;
-    btn.textContent = "Show Live Traffic";
     btn.classList.remove("active");
     return;
   }
@@ -499,7 +498,6 @@ function toggleTraffic() {
     maxZoom: 20,
     opacity: 0.65,
   }).addTo(map);
-  btn.textContent = "Hide Live Traffic";
   btn.classList.add("active");
 }
 
@@ -926,6 +924,25 @@ document.getElementById("route-select").addEventListener("change", async () => {
   applySettingsToForm();
 });
 
+// ─── Sidebar Collapse ─────────────────────────────────────────────────────────
+// Collapsed by default so the map stays the primary focus; the header and
+// minibar (route, traffic, refresh) stay visible either way.
+function applySidebarExpanded(expanded) {
+  document.getElementById("app").classList.toggle("expanded", expanded);
+  const btn = document.getElementById("sidebar-toggle-btn");
+  btn.textContent = expanded ? "▴" : "▾";
+  btn.title = expanded ? "Collapse sidebar" : "Expand sidebar";
+  btn.setAttribute("aria-label", btn.title);
+  btn.setAttribute("aria-expanded", String(expanded));
+  setTimeout(() => map.invalidateSize(), 50);
+}
+
+document.getElementById("sidebar-toggle-btn").addEventListener("click", () => {
+  settings.sidebarExpanded = !settings.sidebarExpanded;
+  saveSettings(settings);
+  applySidebarExpanded(settings.sidebarExpanded);
+});
+
 // ─── Tab Switching ────────────────────────────────────────────────────────────
 document.querySelectorAll(".tab-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -1128,6 +1145,7 @@ async function init() {
   }
 
   applySettingsToForm();
+  applySidebarExpanded(settings.sidebarExpanded);
   await initTrafficControl();
 
   // Request notification permission up front if enabled
