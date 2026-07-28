@@ -588,8 +588,6 @@ function updateBusList() {
 }
 
 function updateRouteHeader() {
-  document.querySelector("#logo span:last-child").textContent =
-    `Route ${currentRouteId()}`;
   document.title = `Route ${currentRouteId()} Bus Tracker`;
 }
 
@@ -861,20 +859,9 @@ document
   .addEventListener("submit", async (e) => {
     e.preventDefault();
     const prevStop = getActiveStop();
-    const prevRoute = settings.selectedRoute;
 
-    const newRoute = document.getElementById("route-select").value;
-    const routeChanged = newRoute !== prevRoute;
-
-    settings.selectedRoute = newRoute;
-    // If route changed, clear stop selections — they belong to the old route
-    if (routeChanged) {
-      settings.morningStop = "";
-      settings.eveningStop = "";
-    } else {
-      settings.morningStop = document.getElementById("morning-stop").value;
-      settings.eveningStop = document.getElementById("evening-stop").value;
-    }
+    settings.morningStop = document.getElementById("morning-stop").value;
+    settings.eveningStop = document.getElementById("evening-stop").value;
     settings.morningStart = document.getElementById("morning-start").value;
     settings.morningEnd = document.getElementById("morning-end").value;
     settings.eveningStart = document.getElementById("evening-start").value;
@@ -897,17 +884,27 @@ document
       indicator.hidden = true;
     }, 2000);
 
-    if (routeChanged) {
-      await switchRoute();
-      applySettingsToForm();
-    } else {
-      const newStop = getActiveStop();
-      if (newStop !== prevStop) {
-        await fetchScheduleForStop(newStop);
-      }
-      updateCommutePanel();
+    const newStop = getActiveStop();
+    if (newStop !== prevStop) {
+      await fetchScheduleForStop(newStop);
     }
+    updateCommutePanel();
   });
+
+// ─── Route Select (header) ────────────────────────────────────────────────────
+document.getElementById("route-select").addEventListener("change", async () => {
+  const newRoute = document.getElementById("route-select").value;
+  if (newRoute === settings.selectedRoute) return;
+
+  settings.selectedRoute = newRoute;
+  // Boarding stops belong to the old route -- clear them.
+  settings.morningStop = "";
+  settings.eveningStop = "";
+  saveSettings(settings);
+
+  await switchRoute();
+  applySettingsToForm();
+});
 
 // ─── Tab Switching ────────────────────────────────────────────────────────────
 document.querySelectorAll(".tab-btn").forEach((btn) => {
