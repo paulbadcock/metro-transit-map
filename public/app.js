@@ -18,8 +18,13 @@ const state = {
   selectedBusId: null,
   selectedTripStops: [],
   selectedTripDirectionId: null,
+  // Stop the rider tapped on the selected trip -- narrows the animated flow
+  // segment from "bus to route end" down to "bus to this stop".
+  selectedStopId: null,
   routePolylines: [],
   routePolylinesByDirection: new Map(), // direction_id -> L.Polyline
+  routeShapeByDirection: new Map(), // direction_id -> raw [lat,lon] shape points, in travel order
+  busFlowPolyline: null, // L.Polyline, the animated bus->destination segment
   activeTab: "map",
   lastVehicleFetch: null,
   nextVehicleRefreshAt: null, // ms epoch -- when the next scheduled poll fires
@@ -154,11 +159,15 @@ function stopDirectionClass(directionId) {
   return directionId === 1 ? "dir-inbound" : "dir-outbound";
 }
 
-function makeStopIcon(directionId) {
+function makeStopIcon(directionId, selected = false) {
+  // iconSize/iconAnchor become inline styles on the div, which would
+  // override a CSS width/height on `.selected` -- so the bigger selected
+  // size is set here instead of in the stylesheet.
+  const size = selected ? 14 : 10;
   return L.divIcon({
-    className: `stop-marker ${stopDirectionClass(directionId)}`,
-    iconSize: [10, 10],
-    iconAnchor: [5, 5],
+    className: `stop-marker ${stopDirectionClass(directionId)}${selected ? " selected" : ""}`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
   });
 }
 
@@ -275,6 +284,7 @@ async function fetchTripStops(tripId) {
 
 function selectBus(id) {
   state.selectedBusId = id;
+  state.selectedStopId = null;
   highlightBusInList(id);
 
   const v = state.vehicles.find((x) => x.id === id);
@@ -286,6 +296,29 @@ function selectBus(id) {
     state.selectedTripDirectionId = null;
     drawStopMarkers();
   }
+  updateRouteFlowHighlight();
+}
+
+// Rider tapped one of the selected trip's own stop markers -- narrow the
+// animated flow segment to "bus to this stop" instead of "bus to route end".
+// Tapping the same stop again clears it, reverting to bus-to-end.
+function selectStopForFlow(stopId) {
+  state.selectedStopId = state.selectedStopId === stopId ? null : stopId;
+  drawStopMarkers();
+  updateBusFlowSegment();
+}
+
+// Leaflet marker clicks don't bubble to the map's own click event (Leaflet
+// stops that propagation), so this only fires for clicks on the map
+// background -- i.e. "outside" any bus -- letting us clear the selection.
+function deselectBus() {
+  if (state.selectedBusId == null) return;
+  state.selectedBusId = null;
+  state.selectedStopId = null;
+  state.selectedTripStops = [];
+  state.selectedTripDirectionId = null;
+  highlightBusInList(null);
+  drawStopMarkers();
   updateRouteFlowHighlight();
 }
 
@@ -356,6 +389,9 @@ function updateVehicleMarkers() {
       state.vehicleMarkers.delete(id);
     }
   }
+
+  // Keep the animated flow segment's start point tracking the bus as it moves.
+  updateBusFlowSegment();
 }
 
 function buildBusPopup(v, delayMin) {
@@ -416,6 +452,10 @@ document.getElementById("map").addEventListener("click", (e) => {
   if (btn && btn.closest(".leaflet-popup-content")) toggleInlineLegend(btn);
 });
 
+// Clicking the map background (not a bus marker or its popup) deselects the
+// active bus, returning the route line to its unselected/resting style.
+map.on("click", deselectBus);
+
 function highlightBusInList(id) {
   document.querySelectorAll(".bus-item").forEach((el) => {
     el.classList.toggle("active", el.dataset.busId === id);
@@ -430,12 +470,13 @@ function drawStopMarkers() {
   for (const s of state.selectedTripStops) {
     if (!s.stop_lat || !s.stop_lon) continue;
     const m = L.marker([s.stop_lat, s.stop_lon], {
-      icon: makeStopIcon(state.selectedTripDirectionId),
+      icon: makeStopIcon(state.selectedTripDirectionId, s.stop_id === state.selectedStopId),
       title: s.stop_name,
     })
       .bindPopup(buildStopPopup(s.stop_name, s.stop_id, null))
       .addTo(map);
     m.on("popupopen", () => loadStopPopupTimes(m, s.stop_id, s.stop_name));
+    m.on("click", () => selectStopForFlow(s.stop_id));
     state.stopMarkers.push(m);
   }
 }
@@ -539,6 +580,7 @@ function drawRoutePolylines(directions) {
   for (const pl of state.routePolylines) pl.remove();
   state.routePolylines = [];
   state.routePolylinesByDirection.clear();
+  state.routeShapeByDirection.clear();
 
   directions.forEach((dir) => {
     // Prefer shape track (follows roads); fall back to straight stop-to-stop lines
@@ -555,6 +597,10 @@ function drawRoutePolylines(directions) {
       weight: 3,
       opacity: 0.6,
       dashArray: isInbound ? "6,4" : null,
+      // Paths bubble click events up to the map by default, which would
+      // immediately re-trigger deselectBus() (bound on map click) the
+      // instant this line's own popup was clicked open.
+      bubblingMouseEvents: false,
     })
       .bindPopup(
         `<strong>Direction ${escapeHtml(String(dir.direction_id))}</strong><br>${escapeHtml(dir.trip_headsign || "")}<br><span style="opacity:0.65">${latlngs.length} shape points</span>`,
@@ -562,6 +608,7 @@ function drawRoutePolylines(directions) {
       .addTo(map);
     state.routePolylines.push(pl);
     state.routePolylinesByDirection.set(dir.direction_id, pl);
+    state.routeShapeByDirection.set(dir.direction_id, latlngs);
   });
 
   // Fit map to route if we have polylines
@@ -573,17 +620,78 @@ function drawRoutePolylines(directions) {
   updateRouteFlowHighlight();
 }
 
-// While a bus is selected, animate flowing dashes along its direction's line
-// -- in the same order as the trip's own stop/shape sequence, so the flow
-// always moves toward where that bus is headed -- and dim the other
-// direction for contrast. With nothing selected, both lines sit at rest.
+// With a bus selected, its direction's line is brought to full opacity and
+// the other direction dimmed for contrast -- but the animated flow itself is
+// drawn separately by updateBusFlowSegment() as just the bus->destination
+// portion, not the whole line (showing the whole route flowing made it hard
+// to tell where the bus actually was or how much distance remained).
 function updateRouteFlowHighlight() {
   const activeDir = state.selectedTripDirectionId;
   for (const [dirId, pl] of state.routePolylinesByDirection) {
     const isActive = activeDir != null && dirId === activeDir;
-    pl.getElement()?.classList.toggle("route-flow-active", isActive);
     pl.setStyle({ opacity: activeDir == null ? 0.6 : isActive ? 0.9 : 0.2 });
   }
+  updateBusFlowSegment();
+}
+
+// Finds the index of the shape point nearest a given lat/lon. Shape points
+// are dense enough along a route like this that nearest-vertex is a good
+// enough stand-in for a true perpendicular projection onto the line.
+function nearestShapeIndex(latlngs, lat, lon) {
+  let bestIdx = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < latlngs.length; i++) {
+    const dLat = latlngs[i][0] - lat;
+    const dLon = latlngs[i][1] - lon;
+    const dist = dLat * dLat + dLon * dLon;
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+// Draws (or clears) the animated segment from the selected bus's current
+// position to its destination -- the whole route if no stop is picked, or
+// just the selected stop if one is. Re-run on every vehicle poll so the
+// segment's start point tracks the bus as it moves.
+function updateBusFlowSegment() {
+  if (state.busFlowPolyline) {
+    state.busFlowPolyline.remove();
+    state.busFlowPolyline = null;
+  }
+
+  const dirId = state.selectedTripDirectionId;
+  if (dirId == null) return;
+
+  const bus = state.vehicles.find((v) => v.id === state.selectedBusId);
+  if (!bus || !bus.lat || !bus.lon) return;
+
+  const latlngs = state.routeShapeByDirection.get(dirId);
+  if (!latlngs || latlngs.length < 2) return;
+
+  const busIdx = nearestShapeIndex(latlngs, bus.lat, bus.lon);
+
+  let destIdx = latlngs.length - 1;
+  if (state.selectedStopId) {
+    const stop = state.selectedTripStops.find((s) => s.stop_id === state.selectedStopId);
+    if (stop) destIdx = nearestShapeIndex(latlngs, stop.stop_lat, stop.stop_lon);
+  }
+
+  const from = Math.min(busIdx, destIdx);
+  const to = Math.max(busIdx, destIdx);
+  const segment = latlngs.slice(from, to + 1);
+  if (segment.length < 2) return;
+
+  const isInbound = dirId === 1;
+  state.busFlowPolyline = L.polyline(segment, {
+    color: isInbound ? DIR_INBOUND_COLOR : DIR_OUTBOUND_COLOR,
+    weight: 5,
+    opacity: 0.95,
+    className: "route-flow-active",
+    bubblingMouseEvents: false, // don't let a click here bubble to the map and deselect the bus
+  }).addTo(map);
 }
 
 // ─── Sidebar: Bus List ────────────────────────────────────────────────────────
@@ -641,11 +749,17 @@ async function switchRoute() {
   for (const m of state.stopMarkers) m.remove();
   state.stopMarkers = [];
   state.selectedBusId = null;
+  state.selectedStopId = null;
   state.selectedTripStops = [];
   state.selectedTripDirectionId = null;
   for (const pl of state.routePolylines) pl.remove();
   state.routePolylines = [];
   state.routePolylinesByDirection.clear();
+  state.routeShapeByDirection.clear();
+  if (state.busFlowPolyline) {
+    state.busFlowPolyline.remove();
+    state.busFlowPolyline = null;
+  }
 
   // Clear data
   state.vehicles = [];
