@@ -25,6 +25,7 @@ const state = {
   routePolylinesByDirection: new Map(), // direction_id -> L.Polyline
   routeShapeByDirection: new Map(), // direction_id -> raw [lat,lon] shape points, in travel order
   busFlowPolyline: null, // L.Polyline, the animated bus->destination segment
+  stopScheduleCache: new Map(), // stop_id -> raw /api/schedule response, reused across popup opens/refreshes
   activeTab: "map",
   lastVehicleFetch: null,
   nextVehicleRefreshAt: null, // ms epoch -- when the next scheduled poll fires
@@ -392,6 +393,7 @@ function updateVehicleMarkers() {
 
   // Keep the animated flow segment's start point tracking the bus as it moves.
   updateBusFlowSegment();
+  refreshOpenStopPopups();
 }
 
 function buildBusPopup(v, delayMin) {
@@ -473,17 +475,22 @@ function drawStopMarkers() {
       icon: makeStopIcon(state.selectedTripDirectionId, s.stop_id === state.selectedStopId),
       title: s.stop_name,
     })
-      .bindPopup(buildStopPopup(s.stop_name, s.stop_id, null))
+      .bindPopup(buildStopPopup(s.stop_name, s.stop_id, null, null))
       .addTo(map);
-    m.on("popupopen", () => loadStopPopupTimes(m, s.stop_id, s.stop_name));
+    m.metroStop = s; // stashed for the popupopen handler and the live refresh loop below
+    m.on("popupopen", () => loadStopPopupTimes(m));
     m.on("click", () => selectStopForFlow(s.stop_id));
     state.stopMarkers.push(m);
   }
 }
 
 // Times pane is `null` while loading, an array (possibly empty) once fetched.
-function buildStopPopup(stopName, stopId, upcoming) {
+// tripContext is `null` while loading or when there's nothing to show
+// (before/after entries relative to the selected bus's own trip -- see
+// computeStopTripContext).
+function buildStopPopup(stopName, stopId, upcoming, tripContext) {
   const header = `<strong>${escapeHtml(stopName)}</strong><br>Stop #${escapeHtml(stopId)}`;
+  const contextHtml = buildTripContextHtml(tripContext);
 
   let timesHtml;
   if (upcoming === null) {
@@ -507,20 +514,144 @@ function buildStopPopup(stopName, stopId, upcoming) {
       .join("")}</div>`;
   }
 
-  return `${header}${timesHtml}`;
+  return `${header}${contextHtml}${timesHtml}`;
 }
 
-async function loadStopPopupTimes(marker, stopId, stopName) {
-  try {
+// One row of trip-context info: the published/scheduled time (adjusted by
+// any live delay for that specific trip+stop), plus a countdown relative to
+// now -- "in N min" for a trip still ahead, "N min ago" for one already gone
+// (the "before" row is often already in the past relative to now, even
+// though it's still "before" the selected bus in schedule order).
+function buildTripContextRow(label, s) {
+  let delayHtml = `<span class="delay ontime">On time</span>`;
+  if (s.delayMin > 1) delayHtml = `<span class="delay late">+${s.delayMin} min</span>`;
+  else if (s.delayMin < -1) delayHtml = `<span class="delay early">${s.delayMin} min</span>`;
+
+  const countdown =
+    s.minutesAway >= 0
+      ? `in ${formatCountdown(s.minutesAway)} min`
+      : `${formatCountdown(-s.minutesAway)} min ago`;
+
+  return `
+    <div class="stop-context-row">
+      <span class="stop-context-label">${escapeHtml(label)}</span>
+      <span class="stop-popup-time">${formatTime12(minutesToTimeString(s.estimatedMin))}</span>
+      ${delayHtml}
+      <span class="stop-context-countdown">${countdown}</span>
+    </div>`;
+}
+
+function buildTripContextHtml(context) {
+  if (!context) return "";
+  const rows = [];
+  // Once the selected bus has already passed this stop, the trip that ran
+  // just before it is old news -- only the next one still matters.
+  if (context.before) rows.push(buildTripContextRow("Bus before", context.before));
+  if (context.after) rows.push(buildTripContextRow("Bus after", context.after));
+  if (rows.length === 0) return "";
+  return `<div class="stop-trip-context">${rows.join("")}</div>`;
+}
+
+// Shape-index comparison (same technique as updateBusFlowSegment) rather
+// than GTFS-RT stop-time updates, since the realtime feed doesn't reliably
+// report per-stop arrival status for every stop on every trip.
+function hasBusPassedStop(stop) {
+  const dirId = state.selectedTripDirectionId;
+  const bus = state.vehicles.find((v) => v.id === state.selectedBusId);
+  const shape = state.routeShapeByDirection.get(dirId);
+  if (!bus || !bus.lat || !bus.lon || !shape || shape.length < 2) return false;
+  const busIdx = nearestShapeIndex(shape, bus.lat, bus.lon);
+  const stopIdx = nearestShapeIndex(shape, stop.stop_lat, stop.stop_lon);
+  return busIdx > stopIdx;
+}
+
+// Finds the scheduled trips immediately before/after the selected bus's own
+// trip at this stop, within the same direction. Falls back to anchoring on
+// the current time if the selected trip isn't in the static schedule (e.g. a
+// real-time-only trip).
+function computeStopTripContext(stopId, stop, schedule) {
+  const dirId = state.selectedTripDirectionId;
+  const bus = state.vehicles.find((v) => v.id === state.selectedBusId);
+
+  const dirEntries = schedule
+    .filter((e) => e.direction_id === dirId)
+    .slice()
+    .sort((a, b) => a.departure_time.localeCompare(b.departure_time));
+
+  const delayByTrip = NextBuses.buildDelayMap(state.allTripUpdates);
+  const decorate = (e) => {
+    const depMin = timeStringToMinutes(e.departure_time);
+    const delaySeconds = delayByTrip[e.trip_id + "_" + stopId]?.departure_delay ?? 0;
+    const delayMin = Math.round(delaySeconds / 60);
+    const estimatedMin = depMin + delayMin;
+    return { ...e, depMin, delayMin, estimatedMin, minutesAway: estimatedMin - nowMinutes() };
+  };
+
+  const idx = bus ? dirEntries.findIndex((e) => e.trip_id === bus.trip_id) : -1;
+  let before = null;
+  let after = null;
+
+  if (idx === -1) {
+    const now = nowMinutes();
+    for (let i = dirEntries.length - 1; i >= 0; i--) {
+      if (timeStringToMinutes(dirEntries[i].departure_time) <= now) {
+        before = decorate(dirEntries[i]);
+        break;
+      }
+    }
+    for (let i = 0; i < dirEntries.length; i++) {
+      if (timeStringToMinutes(dirEntries[i].departure_time) > now) {
+        after = decorate(dirEntries[i]);
+        break;
+      }
+    }
+  } else {
+    if (idx > 0) before = decorate(dirEntries[idx - 1]);
+    if (idx < dirEntries.length - 1) after = decorate(dirEntries[idx + 1]);
+  }
+
+  const passed = hasBusPassedStop(stop);
+  return { before: passed ? null : before, after, passed };
+}
+
+async function ensureStopScheduleCached(stopId) {
+  if (!state.stopScheduleCache.has(stopId)) {
     const schedule = await apiFetch(
       `/api/schedule?stop_id=${encodeURIComponent(stopId)}&route_id=${encodeURIComponent(currentRouteId())}`,
     );
-    const upcoming = NextBuses.computeNextBuses(schedule, stopId, state.allTripUpdates, nowMinutes(), 5);
-    marker.setPopupContent(buildStopPopup(stopName, stopId, upcoming));
+    state.stopScheduleCache.set(stopId, schedule);
+  }
+  return state.stopScheduleCache.get(stopId);
+}
+
+function renderStopPopupContent(marker, stop, schedule) {
+  const upcoming = NextBuses.computeNextBuses(schedule, stop.stop_id, state.allTripUpdates, nowMinutes(), 5);
+  const tripContext = computeStopTripContext(stop.stop_id, stop, schedule);
+  marker.setPopupContent(buildStopPopup(stop.stop_name, stop.stop_id, upcoming, tripContext));
+}
+
+async function loadStopPopupTimes(marker) {
+  const stop = marker.metroStop;
+  try {
+    const schedule = await ensureStopScheduleCached(stop.stop_id);
+    renderStopPopupContent(marker, stop, schedule);
   } catch (err) {
     marker.setPopupContent(
-      `<strong>${escapeHtml(stopName)}</strong><br>Stop #${escapeHtml(stopId)}<br><span class="empty-state">Couldn't load times</span>`,
+      `<strong>${escapeHtml(stop.stop_name)}</strong><br>Stop #${escapeHtml(stop.stop_id)}<br><span class="empty-state">Couldn't load times</span>`,
     );
+  }
+}
+
+// Keeps any open stop popup's countdown/delay/before-after box live as
+// vehicle positions and delays refresh, without refetching the (static,
+// already-cached) schedule each time.
+function refreshOpenStopPopups() {
+  for (const m of state.stopMarkers) {
+    const popup = m.getPopup();
+    if (!popup || !popup.isOpen()) continue;
+    const schedule = state.stopScheduleCache.get(m.metroStop.stop_id);
+    if (!schedule) continue;
+    renderStopPopupContent(m, m.metroStop, schedule);
   }
 }
 
@@ -756,6 +887,7 @@ async function switchRoute() {
   state.routePolylines = [];
   state.routePolylinesByDirection.clear();
   state.routeShapeByDirection.clear();
+  state.stopScheduleCache.clear();
   if (state.busFlowPolyline) {
     state.busFlowPolyline.remove();
     state.busFlowPolyline = null;
