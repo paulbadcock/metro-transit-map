@@ -30,6 +30,11 @@ const state = {
   // bus+stop), so deselecting can restore it instead of leaving the rider
   // zoomed in with nothing selected.
   preSelectView: null, // { center: L.LatLng, zoom: number }
+  // True once the rider manually pans/zooms after selecting a bus -- blocks
+  // the auto-fit that would otherwise run when they subsequently pick a
+  // stop, so it doesn't yank the view back and undo their adjustment. Reset
+  // whenever a fresh bus selection starts.
+  userAdjustedView: false,
   activeTab: "map",
   lastVehicleFetch: null,
   nextVehicleRefreshAt: null, // ms epoch -- when the next scheduled poll fires
@@ -85,6 +90,43 @@ L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r
   maxZoom: 20,
   subdomains: "abcd",
 }).addTo(map);
+
+// Leaflet fires the same movestart/zoomstart events whether a pan/zoom came
+// from the rider's own hands or from our own fitBounds()/setView() calls --
+// there's no built-in way to tell them apart. So every place in this file
+// that repositions the map programmatically must go through setMapView(),
+// which flags the move as "ours" for as long as it's in flight; any
+// movestart/zoomstart that arrives while nothing is flagged is the rider
+// manually adjusting the viewport, recorded so later auto-zooms (e.g.
+// picking a stop while a bus is selected) know to leave it alone.
+//
+// A depth counter, not a boolean: Leaflet's zoom/pan can resolve on the next
+// animation frame rather than synchronously, so two setMapView() calls back
+// to back (e.g. deselectBus()'s restore immediately followed by a fresh
+// selectBus()'s zoom) can have their start/end events interleave. A plain
+// flag would get reset by the first call's moveend while the second's
+// animation was still in flight, wrongly unmasking it as a rider action.
+let programmaticViewDepth = 0;
+
+function setMapView(applyFn) {
+  programmaticViewDepth++;
+  let settled = false;
+  const settle = () => {
+    if (settled) return;
+    settled = true;
+    programmaticViewDepth = Math.max(0, programmaticViewDepth - 1);
+  };
+  applyFn();
+  map.once("moveend zoomend", settle);
+  // Belt-and-suspenders: moveend/zoomend won't fire at all if the target
+  // view is identical to the current one, which would otherwise leave the
+  // depth stuck above zero and swallow the rider's next real interaction.
+  setTimeout(settle, 350);
+}
+
+map.on("movestart zoomstart", () => {
+  if (programmaticViewDepth === 0) state.userAdjustedView = true;
+});
 
 // ─── Bus Icon ─────────────────────────────────────────────────────────────────
 function busDirectionClass(directionId) {
@@ -295,6 +337,10 @@ function selectBus(id) {
   if (state.preSelectView == null) {
     state.preSelectView = { center: map.getCenter(), zoom: map.getZoom() };
   }
+  // Picking a (new) bus is a deliberate "take me there" action, so it
+  // always re-zooms -- even if the rider had manually adjusted the view for
+  // a previously selected bus.
+  state.userAdjustedView = false;
 
   state.selectedBusId = id;
   state.selectedStopId = null;
@@ -347,9 +393,10 @@ function deselectBus() {
   updateRouteFlowHighlight();
 
   if (state.preSelectView) {
-    map.setView(state.preSelectView.center, state.preSelectView.zoom);
+    setMapView(() => map.setView(state.preSelectView.center, state.preSelectView.zoom));
     state.preSelectView = null;
   }
+  state.userAdjustedView = false;
 }
 
 async function fetchRoutePolyline() {
@@ -796,7 +843,7 @@ function drawRoutePolylines(directions) {
   // Fit map to route if we have polylines
   if (state.routePolylines.length > 0) {
     const group = L.featureGroup(state.routePolylines);
-    map.fitBounds(group.getBounds().pad(0.1));
+    setMapView(() => map.fitBounds(group.getBounds().pad(0.1)));
   }
 
   updateRouteFlowHighlight();
@@ -880,12 +927,15 @@ function updateBusFlowSegment() {
 // bus to a picked stop) right when a selection is made. Deliberately not
 // called from the periodic vehicle poll -- only on the selection actions
 // themselves -- or the view would keep re-centering distractingly as the
-// bus moves every 15s.
+// bus moves every 15s. Also skipped once the rider has manually adjusted
+// the viewport since selecting the bus, so narrowing to a stop afterward
+// doesn't yank their view back and undo that adjustment.
 function zoomToActiveSegment() {
+  if (state.userAdjustedView) return;
   if (!state.busFlowPolyline) return;
   const bounds = state.busFlowPolyline.getBounds();
   if (!bounds.isValid()) return;
-  map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+  setMapView(() => map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 }));
 }
 
 // ─── Sidebar: Bus List ────────────────────────────────────────────────────────
@@ -952,6 +1002,7 @@ async function switchRoute() {
   state.routeShapeByDirection.clear();
   state.stopScheduleCache.clear();
   state.preSelectView = null;
+  state.userAdjustedView = false;
   if (state.busFlowPolyline) {
     state.busFlowPolyline.remove();
     state.busFlowPolyline = null;
