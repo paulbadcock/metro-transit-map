@@ -585,12 +585,16 @@ function drawStopMarkers() {
 // Times pane is `null` while loading, an array (possibly empty) once fetched.
 // tripContext is `null` while loading or when there's nothing to show
 // (before/after entries relative to the selected bus's own trip -- see
-// computeStopTripContext).
+// computeStopTripContext). The "after" entry is the same trip as one of the
+// rows in the departures list below (it's the next departure at this stop
+// after the selected bus's own visit) -- rather than showing it twice, it's
+// tagged in place in that list, and only falls back to its own row here if
+// it didn't make the list (e.g. it's further out than the list's limit).
 function buildStopPopup(stopName, stopId, upcoming, tripContext) {
   const header = `<strong>${escapeHtml(stopName)}</strong><br>Stop #${escapeHtml(stopId)}`;
-  const contextHtml = buildTripContextHtml(tripContext);
 
   let timesHtml;
+  let afterShownInList = false;
   if (upcoming === null) {
     timesHtml = `<div class="stop-popup-times empty-state">Loading times…</div>`;
   } else if (upcoming.length === 0) {
@@ -602,15 +606,21 @@ function buildStopPopup(stopName, stopId, upcoming, tripContext) {
         if (s.delayMin > 1) delayHtml = `<span class="delay late">+${s.delayMin} min</span>`;
         else if (s.delayMin < -1) delayHtml = `<span class="delay early">${s.delayMin} min</span>`;
 
+        const isYourBus = tripContext?.after?.trip_id === s.trip_id;
+        if (isYourBus) afterShownInList = true;
+
         return `
-          <div class="stop-popup-time-row">
+          <div class="stop-popup-time-row${isYourBus ? " your-bus" : ""}">
             <span class="stop-popup-time">${formatTime12(minutesToTimeString(s.estimatedMin))}</span>
             ${delayHtml}
             <span class="stop-popup-headsign">${escapeHtml(s.trip_headsign || "")}</span>
+            ${isYourBus ? `<span class="your-bus-tag">your bus</span>` : ""}
           </div>`;
       })
       .join("")}</div>`;
   }
+
+  const contextHtml = buildTripContextHtml(tripContext, afterShownInList);
 
   return `${header}${contextHtml}${timesHtml}`;
 }
@@ -639,13 +649,16 @@ function buildTripContextRow(label, s) {
     </div>`;
 }
 
-function buildTripContextHtml(context) {
+function buildTripContextHtml(context, afterShownInList) {
   if (!context) return "";
   const rows = [];
   // Once the selected bus has already passed this stop, the trip that ran
   // just before it is old news -- only the next one still matters.
   if (context.before) rows.push(buildTripContextRow("Bus before", context.before));
-  if (context.after) rows.push(buildTripContextRow("Bus after", context.after));
+  // The "after" trip is normally tagged in place in the departures list
+  // instead (see buildStopPopup) -- only give it its own row here if it
+  // didn't appear there.
+  if (context.after && !afterShownInList) rows.push(buildTripContextRow("Bus after", context.after));
   if (rows.length === 0) return "";
   return `<div class="stop-trip-context">${rows.join("")}</div>`;
 }
