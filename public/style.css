@@ -717,6 +717,37 @@ html, body {
   white-space: nowrap;
 }
 
+/* The bus-before/bus-after box on a stop popup, scoped to the selected
+   trip -- distinct from .stop-popup-times below it, which lists upcoming
+   departures for the stop in general. */
+.stop-trip-context {
+  margin-top: 6px;
+  padding: 6px 0;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stop-context-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+
+.stop-context-label {
+  color: var(--color-text-muted);
+  min-width: 70px;
+}
+
+.stop-context-countdown {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
 /* ─── Direction Legend ──────────────────────────────────────────────────────── */
 .direction-legend {
   display: flex;
