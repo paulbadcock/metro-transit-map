@@ -1,0 +1,3 @@
+stop_id,stop_name,stop_lat,stop_lon
+1001,Cobequid Terminal,44.7896,-63.6947
+1002,Duke St at Barrington St,44.6488,-63.5752
