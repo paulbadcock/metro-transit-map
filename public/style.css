@@ -280,9 +280,11 @@ html, body {
   50%       { opacity: 0.3; }
 }
 
-/* Flowing dashes along the selected bus's direction line, animating toward
-   where the trip ends up. The path's points run start-to-end in travel
-   order, and a decreasing dash-offset makes the pattern march the same way. */
+/* Flowing dashes along the bus->destination segment drawn by
+   updateBusFlowSegment() in app.js (a separate polyline over just that
+   stretch, not the whole route line). Segment points run start-to-end in
+   travel order, and a decreasing dash-offset makes the pattern march the
+   same way. */
 .route-flow-active {
   stroke-dasharray: 12 10;
   animation: route-flow 0.6s linear infinite;
@@ -683,6 +685,10 @@ html, body {
 }
 .stop-marker.dir-outbound { background: var(--color-dir-outbound); }
 .stop-marker.dir-inbound  { background: var(--color-dir-inbound); }
+.stop-marker.selected {
+  border-color: var(--color-accent, #fff);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4);
+}
 
 .stop-popup-times {
   margin-top: 6px;
