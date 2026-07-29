@@ -287,6 +287,7 @@ function selectBus(id) {
   state.selectedBusId = id;
   state.selectedStopId = null;
   highlightBusInList(id);
+  applyVehicleVisibility();
 
   const v = state.vehicles.find((x) => x.id === id);
   if (v && v.trip_id) {
@@ -298,6 +299,7 @@ function selectBus(id) {
     drawStopMarkers();
   }
   updateRouteFlowHighlight();
+  zoomToActiveSegment();
 }
 
 // Rider tapped one of the selected trip's own stop markers -- narrow the
@@ -307,6 +309,7 @@ function selectStopForFlow(stopId) {
   state.selectedStopId = state.selectedStopId === stopId ? null : stopId;
   drawStopMarkers();
   updateBusFlowSegment();
+  zoomToActiveSegment();
 }
 
 // Leaflet marker clicks don't bubble to the map's own click event (Leaflet
@@ -319,6 +322,7 @@ function deselectBus() {
   state.selectedTripStops = [];
   state.selectedTripDirectionId = null;
   highlightBusInList(null);
+  applyVehicleVisibility();
   drawStopMarkers();
   updateRouteFlowHighlight();
 }
@@ -355,6 +359,24 @@ async function fetchRoutes() {
 }
 
 // ─── Map: Vehicles ────────────────────────────────────────────────────────────
+function isVehicleVisible(id) {
+  return state.selectedBusId == null || id === state.selectedBusId;
+}
+
+// While a bus is selected, every other vehicle marker is hidden (not
+// removed from state -- just off the map) so the selected bus and its route
+// stand out without clutter from unrelated buses. Called both right after a
+// selection change and on every vehicle poll, since newly-appearing buses
+// need the same treatment as ones already on the map.
+function applyVehicleVisibility() {
+  for (const [id, marker] of state.vehicleMarkers) {
+    const shouldShow = isVehicleVisible(id);
+    const isShown = map.hasLayer(marker);
+    if (shouldShow && !isShown) marker.addTo(map);
+    else if (!shouldShow && isShown) marker.remove();
+  }
+}
+
 function updateVehicleMarkers() {
   const seenIds = new Set();
 
@@ -390,6 +412,10 @@ function updateVehicleMarkers() {
       state.vehicleMarkers.delete(id);
     }
   }
+
+  // Re-apply in case a bus was newly (re)added to the map above, or is a
+  // still-hidden bus other than the one currently selected.
+  applyVehicleVisibility();
 
   // Keep the animated flow segment's start point tracking the bus as it moves.
   updateBusFlowSegment();
@@ -823,6 +849,18 @@ function updateBusFlowSegment() {
     className: "route-flow-active",
     bubblingMouseEvents: false, // don't let a click here bubble to the map and deselect the bus
   }).addTo(map);
+}
+
+// Fits the map to the active bus->destination segment (bus to route end, or
+// bus to a picked stop) right when a selection is made. Deliberately not
+// called from the periodic vehicle poll -- only on the selection actions
+// themselves -- or the view would keep re-centering distractingly as the
+// bus moves every 15s.
+function zoomToActiveSegment() {
+  if (!state.busFlowPolyline) return;
+  const bounds = state.busFlowPolyline.getBounds();
+  if (!bounds.isValid()) return;
+  map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
 }
 
 // ─── Sidebar: Bus List ────────────────────────────────────────────────────────
