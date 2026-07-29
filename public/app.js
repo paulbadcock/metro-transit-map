@@ -305,9 +305,17 @@ function selectBus(id) {
 // Rider tapped one of the selected trip's own stop markers -- narrow the
 // animated flow segment to "bus to this stop" instead of "bus to route end".
 // Tapping the same stop again clears it, reverting to bus-to-end.
+//
+// Deliberately doesn't call drawStopMarkers() here: that removes and
+// recreates every marker, including the one just clicked -- which destroys
+// its popup (and the DOM node loadStopPopupTimes() is about to write into)
+// right as Leaflet's own click handling opens it. Updating icons in place
+// keeps every marker, and its popup, alive.
 function selectStopForFlow(stopId) {
   state.selectedStopId = state.selectedStopId === stopId ? null : stopId;
-  drawStopMarkers();
+  for (const m of state.stopMarkers) {
+    m.setIcon(makeStopIcon(state.selectedTripDirectionId, m.metroStop.stop_id === state.selectedStopId));
+  }
   updateBusFlowSegment();
   zoomToActiveSegment();
 }
