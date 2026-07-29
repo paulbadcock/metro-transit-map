@@ -26,6 +26,10 @@ const state = {
   routeShapeByDirection: new Map(), // direction_id -> raw [lat,lon] shape points, in travel order
   busFlowPolyline: null, // L.Polyline, the animated bus->destination segment
   stopScheduleCache: new Map(), // stop_id -> raw /api/schedule response, reused across popup opens/refreshes
+  // Map view captured right before the first zoom-in of a selection (bus or
+  // bus+stop), so deselecting can restore it instead of leaving the rider
+  // zoomed in with nothing selected.
+  preSelectView: null, // { center: L.LatLng, zoom: number }
   activeTab: "map",
   lastVehicleFetch: null,
   nextVehicleRefreshAt: null, // ms epoch -- when the next scheduled poll fires
@@ -284,6 +288,14 @@ async function fetchTripStops(tripId) {
 }
 
 function selectBus(id) {
+  // Only capture on the first selection, not when switching from one
+  // selected bus straight to another -- otherwise the saved view would keep
+  // sliding forward to the last bus's zoomed-in position instead of back to
+  // where the rider actually started.
+  if (state.preSelectView == null) {
+    state.preSelectView = { center: map.getCenter(), zoom: map.getZoom() };
+  }
+
   state.selectedBusId = id;
   state.selectedStopId = null;
   highlightBusInList(id);
@@ -333,6 +345,11 @@ function deselectBus() {
   applyVehicleVisibility();
   drawStopMarkers();
   updateRouteFlowHighlight();
+
+  if (state.preSelectView) {
+    map.setView(state.preSelectView.center, state.preSelectView.zoom);
+    state.preSelectView = null;
+  }
 }
 
 async function fetchRoutePolyline() {
@@ -934,6 +951,7 @@ async function switchRoute() {
   state.routePolylinesByDirection.clear();
   state.routeShapeByDirection.clear();
   state.stopScheduleCache.clear();
+  state.preSelectView = null;
   if (state.busFlowPolyline) {
     state.busFlowPolyline.remove();
     state.busFlowPolyline = null;
