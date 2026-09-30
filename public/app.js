@@ -84,11 +84,12 @@ const map = L.map("map", {
   zoomControl: true,
 }).setView(HALIFAX_CENTER, 13);
 
-L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+// OpenStreetMap's own tile server: keyless, unlike CARTO's basemaps, which
+// now require an API key. maxZoom is 19 -- OSM has no z20 raster tiles.
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution:
-    '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
-  maxZoom: 20,
-  subdomains: "abcd",
+    '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 19,
 }).addTo(map);
 
 // Leaflet fires the same movestart/zoomstart events whether a pan/zoom came
@@ -804,7 +805,9 @@ function toggleTraffic() {
   }
 
   state.trafficLayer = L.tileLayer("/api/traffic-tile/{z}/{x}/{y}", {
-    maxZoom: 20,
+    // Matches the basemap's 19 so turning the overlay on can't raise the
+    // map's max zoom past where OSM has tiles, leaving a blank basemap.
+    maxZoom: 19,
     opacity: 0.65,
   }).addTo(map);
   btn.classList.add("active");
