@@ -1,0 +1,5 @@
+shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence
+shp-out,44.7896,-63.6947,1
+shp-out,44.6488,-63.5752,2
+shp-in,44.6488,-63.5752,1
+shp-in,44.7896,-63.6947,2
