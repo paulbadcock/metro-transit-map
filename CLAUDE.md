@@ -13,6 +13,10 @@ npm run lint       # Run ESLint
 
 The server starts on http://localhost:3000. No build step.
 
+Set `GTFS_DIR` to point at a directory of GTFS static files (e.g. `GTFS_DIR=$(pwd)/test/fixtures/gtfs npm start`) to skip the download and freshness check entirely and load from there instead — useful for running without network access. `test/fixtures/gtfs/` is a small checked-in fixture (one route, two stops, one trip per direction) covering the same files `loadGtfsData` expects; GTFS-RT endpoints (`/api/vehicles`, `/api/trip-updates`, `/api/alerts`) still hit Halifax's live feeds regardless, since only the static data is mocked.
+
+`test/gtfs-pipeline.test.js` exercises this fixture end to end — parsing the files via `loadGtfsData()` and hitting the real API routes — as a complement to `test/routes.test.js`, which seeds `gtfsData`'s Maps directly and so never touches the file-parsing pipeline itself.
+
 On first start (or when GTFS data is >24h old), `server.js` downloads `google_transit.zip` from Halifax Transit and extracts five files into `data/gtfs/`. Subsequent starts skip the download.
 
 CI (`.github/workflows/ci.yml`) runs lint, tests, `npm audit --audit-level=high`, and a Docker build check on every push/PR to `main`.

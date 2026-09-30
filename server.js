@@ -44,7 +44,11 @@ if (isMainModule) {
 }
 
 const GTFS_STATIC_URL = 'https://gtfs.halifax.ca/static/google_transit.zip';
-const GTFS_DIR = join(__dirname, 'data', 'gtfs');
+// Overridable so tests/local dev can point at a checked-in fixture set
+// (test/fixtures/gtfs/) instead of the real download -- see startup() below,
+// which treats an explicit GTFS_DIR as "the caller manages this data" and
+// skips the freshness check and network fetch entirely.
+const GTFS_DIR = process.env.GTFS_DIR || join(__dirname, 'data', 'gtfs');
 
 const VEHICLE_POSITIONS_URL = 'https://gtfs.halifax.ca/realtime/Vehicle/VehiclePositions.pb';
 const TRIP_UPDATES_URL = 'https://gtfs.halifax.ca/realtime/TripUpdate/TripUpdates.pb';
@@ -606,7 +610,9 @@ app.use((err, req, res, _next) => {
 // ─── Startup ──────────────────────────────────────────────────────────────────
 
 async function startup() {
-  if (!isGtfsFresh()) {
+  if (process.env.GTFS_DIR) {
+    console.log(`GTFS_DIR override set, loading GTFS data from ${GTFS_DIR} (skipping download).`);
+  } else if (!isGtfsFresh()) {
     await downloadGtfs();
   } else {
     console.log('GTFS static data is fresh, skipping download.');
@@ -638,4 +644,4 @@ if (isMainModule) {
   });
 }
 
-export { app, gtfsData };
+export { app, gtfsData, loadGtfsData };
