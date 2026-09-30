@@ -47,6 +47,17 @@ PORT=8080 docker compose up -d
 
 The server handles `SIGTERM`/`SIGINT` by closing the HTTP server cleanly (with a 10s hard-exit fallback), so `docker stop`/redeploys don't have to wait out Docker's hard-kill grace period.
 
+### Pulling a pre-built image instead of building
+
+CI's `publish` job (`.github/workflows/ci.yml`) builds the image and pushes it to GitHub Container Registry on every push to `main`, tagged `latest` and with the commit SHA — `ghcr.io/paulbadcock/metro-transit-map:latest` / `:<sha>`. `docker-compose.yml` sets `image:` to that `latest` tag alongside `build: .`, so:
+
+```bash
+docker compose pull && docker compose up -d   # deploy server: pull the published image, no build/source needed
+docker compose up --build                     # local dev: build from source instead, same tag
+```
+
+The GHCR package defaults to **private** on first push even though the repo is public — visit the package's GitHub page (linked from the repo sidebar under "Packages") and change its visibility to public, or `docker pull` from the server will need `docker login ghcr.io` first.
+
 ## Architecture
 
 **Backend (`server.js`)** — ES module. Serves `public/` as static files and exposes these API routes:
