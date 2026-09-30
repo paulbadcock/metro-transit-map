@@ -1,6 +1,12 @@
 services:
   app:
     container_name: busmap
+    # image + build together: `docker compose up --build` builds locally from
+    # the Dockerfile and tags it with this name (for local dev); on a server
+    # that never builds, `docker compose pull && docker compose up -d` pulls
+    # this same tag straight from GHCR instead -- see CI's `publish` job,
+    # which pushes it on every merge to main.
+    image: ghcr.io/paulbadcock/metro-transit-map:latest
     build: .
     ports:
       - "${PORT:-4040}:4040"
