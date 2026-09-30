@@ -261,7 +261,7 @@ async function getCached(key, fetchFn, force = false) {
 
 // CSP allow-list matches this app's actual resources: Leaflet is loaded
 // from unpkg.com (its CSS also pulls marker icons from there), map tiles
-// come from CARTO's lettered basemap subdomains, and everything else
+// come from OpenStreetMap's tile server, and everything else
 // (API calls, our own scripts/styles) is same-origin.
 app.use(helmet({
   contentSecurityPolicy: {
@@ -269,7 +269,7 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", 'https://unpkg.com'],
       styleSrc: ["'self'", 'https://unpkg.com', "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:', 'https://unpkg.com', 'https://*.basemaps.cartocdn.com'],
+      imgSrc: ["'self'", 'data:', 'https://unpkg.com', 'https://tile.openstreetmap.org'],
       connectSrc: ["'self'"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
