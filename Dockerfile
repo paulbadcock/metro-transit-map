@@ -12,7 +12,7 @@ RUN npm ci --omit=dev
 # this the volume ends up root-owned and unwritable by the non-root runtime.
 RUN mkdir -p /app/data/gtfs
 
-FROM gcr.io/distroless/nodejs24-debian12:nonroot AS runtime
+FROM gcr.io/distroless/nodejs26-debian13:nonroot AS runtime
 
 WORKDIR /app
 
