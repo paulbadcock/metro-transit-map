@@ -82,14 +82,24 @@ const map = L.map("map", {
   center: HALIFAX_CENTER,
   zoom: 13,
   zoomControl: true,
+  // No raster tile layer sets this implicitly now that the basemap is
+  // vector (see below), so it's set explicitly here instead -- keeps the
+  // same zoom ceiling as before, and matches the traffic overlay's own
+  // maxZoom so overlay and basemap never disagree on how far in you can go.
+  maxZoom: 19,
 }).setView(HALIFAX_CENTER, 13);
 
-// OpenStreetMap's own tile server: keyless, unlike CARTO's basemaps, which
-// now require an API key. maxZoom is 19 -- OSM has no z20 raster tiles.
-L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  attribution:
-    '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  maxZoom: 19,
+// OpenFreeMap's "Liberty" style: a free, keyless vector-tile basemap built
+// as a spiritual successor to CARTO's Voyager (which now requires an API
+// key) -- same light, colorful look, no account needed, no request limits.
+// It's vector tiles rendered by MapLibre GL rather than Leaflet's own
+// raster L.tileLayer, so it's bridged in via maplibre-gl-leaflet instead
+// (see index.html for the three CDN scripts this depends on, loaded in
+// order: leaflet, maplibre-gl, then the bridge). Attribution is handled
+// automatically by the bridge -- it reads it straight from the style's
+// resolved tile source once the underlying MapLibre map fires "load".
+L.maplibreGL({
+  style: "https://tiles.openfreemap.org/styles/liberty",
 }).addTo(map);
 
 // Leaflet fires the same movestart/zoomstart events whether a pan/zoom came
