@@ -631,6 +631,14 @@ html, body {
 .bus-direction-disc.dir-outbound { background: var(--color-dir-outbound); }
 .bus-direction-disc.dir-inbound  { background: var(--color-dir-inbound); }
 
+/* Same accent-ring language the stop markers use for .selected (see
+   .stop-marker.selected) -- a consistent "this is the selected one" visual
+   across both marker types, rather than only being findable via the
+   sidebar's highlighted list item or the narrowed route-flow line. */
+.bus-marker-wrap.selected .bus-direction-disc {
+  box-shadow: 0 0 0 3px var(--color-accent, #fff), 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
 .bus-age-badge {
   position: absolute;
   top: -6px;
