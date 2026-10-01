@@ -589,6 +589,10 @@ html, body {
 }
 .debug-link:hover { color: var(--color-accent); }
 
+.debug-version {
+  font-size: 12px;
+}
+
 /* ─── Leaflet overrides ─────────────────────────────────────────────────────── */
 .leaflet-popup-content-wrapper {
   background: var(--color-surface);

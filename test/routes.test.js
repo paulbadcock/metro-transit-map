@@ -211,6 +211,15 @@ describe('GET /api/status', () => {
     assert.equal(body.stopsLoaded, 2);
     assert.equal(body.routeTrips, 1);
   });
+
+  // CI's publish job bumps and tags this on every push to main (see
+  // .github/workflows/ci.yml) -- surfaced in the UI (Settings > Debug) so a
+  // stale deploy is visible without grepping app.js by hand.
+  test('includes the app version from package.json', async () => {
+    const res = await fetch(`${baseUrl}/api/status`);
+    const body = await res.json();
+    assert.match(body.version, /^\d+\.\d+\.\d+$/);
+  });
 });
 
 describe('security headers', () => {

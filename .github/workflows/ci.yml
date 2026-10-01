@@ -40,17 +40,42 @@ jobs:
   # Builds the same image again (build-push-action doesn't support exporting
   # a `push: false` build to reuse here) and pushes it to GHCR, but only for
   # pushes to main -- PRs get the build-only check above, never a publish.
-  # The image is tagged `latest` plus the commit SHA so a deploy can pin to
-  # an exact build instead of always floating on `latest`.
+  # Every push to main is a release: this job bumps package.json's patch
+  # version, commits and tags that itself, then builds the image from that
+  # bumped commit so the version baked into it (read by server.js, exposed
+  # via /api/status and the UI) always matches a real, findable git tag.
+  # Skipped for the bump commit's own push (its "[skip ci]" message, which
+  # GitHub also uses to skip the whole workflow for that push, so this `if`
+  # only matters for a non-skipped run that still somehow carries the
+  # message) to avoid double-bumping.
   publish:
     needs: [test, docker-build]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >
+      github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      !contains(github.event.head_commit.message, 'chore: bump version')
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
     steps:
       - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Bump version and tag
+        id: bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          new_version=$(npm version patch --no-git-tag-version)
+          git commit -am "chore: bump version to ${new_version} [skip ci]"
+          git tag "${new_version}"
+          git push origin HEAD:main
+          git push origin "${new_version}"
+          echo "version=${new_version#v}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v4
 
@@ -66,4 +91,5 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
+            ghcr.io/${{ github.repository }}:${{ steps.bump.outputs.sha }}
+            ghcr.io/${{ github.repository }}:v${{ steps.bump.outputs.version }}

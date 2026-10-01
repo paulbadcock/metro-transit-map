@@ -1200,6 +1200,22 @@ function updateStatusDot(ok) {
   dot.className = ok ? "green" : "red";
 }
 
+// Fetched once at startup rather than polled -- a running server's version
+// can't change out from under it, only a redeploy (a fresh process) would.
+// Surfaced two places: the Settings > Debug text, and the status dot's own
+// tooltip, so a stale deploy (served an old version after a merge) is
+// checkable at a glance without digging into Settings or grepping app.js.
+async function loadAppVersion() {
+  try {
+    const { version } = await apiFetch(`/api/status?route_id=${encodeURIComponent(currentRouteId())}`);
+    document.getElementById("app-version").textContent = `Version ${version}`;
+    const dot = document.getElementById("status-dot");
+    dot.title = `${dot.title} — v${version}`;
+  } catch (err) {
+    console.warn("[BusTracker] Could not load app version:", err);
+  }
+}
+
 // ─── Commute Panel ────────────────────────────────────────────────────────────
 function updateCommutePanel() {
   const window = getActiveWindow();
@@ -1748,6 +1764,7 @@ async function init() {
   applySettingsToForm();
   applySidebarExpanded(settings.sidebarExpanded);
   await initTrafficControl();
+  loadAppVersion(); // not awaited -- purely informational, never blocks startup
 
   // Request notification permission up front if enabled
   if (settings.notifEnable && Notification.permission === "default") {
