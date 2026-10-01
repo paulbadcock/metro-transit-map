@@ -322,6 +322,25 @@ function getActiveStop() {
   return settings.morningStop || settings.eveningStop;
 }
 
+// A boarding-stop <select>'s value (what getActiveStop() above returns, and
+// what's persisted verbatim in settings) is a bare stop_id for a stop that
+// only serves one direction, or "stop_id:direction_id" for one that serves
+// both (see populateStopDropdowns, which is the only place that encodes
+// this) -- disambiguating which direction's schedule the rider actually
+// wants at a shared stop, the same problem #22 solved for the map's
+// stop-popup flow. Everywhere downstream that matches against a real GTFS
+// stop_id (the delay map, notification keys, state.stops lookups) needs the
+// bare id this returns, not the raw settings value.
+function parseStopSelection(raw) {
+  if (!raw) return { stopId: raw, directionId: null };
+  const i = raw.lastIndexOf(":");
+  if (i === -1) return { stopId: raw, directionId: null };
+  const directionId = parseInt(raw.slice(i + 1), 10);
+  return Number.isNaN(directionId)
+    ? { stopId: raw, directionId: null }
+    : { stopId: raw.slice(0, i), directionId };
+}
+
 // ─── API Calls ────────────────────────────────────────────────────────────────
 async function apiFetch(url) {
   const res = await fetch(url);
@@ -443,13 +462,18 @@ async function fetchRoutePolyline() {
   drawRoutePolylines(data);
 }
 
-async function fetchScheduleForStop(stopId) {
+// directionId is omitted when the configured boarding stop only serves one
+// direction anyway (see populateStopDropdowns/parseStopSelection) -- the
+// server treats a missing direction as "don't filter", same as before this
+// existed, so unambiguous single-direction stops are unaffected either way.
+async function fetchScheduleForStop(stopId, directionId) {
   if (!stopId) {
     state.schedule = [];
     return;
   }
+  const dirParam = directionId != null ? `&direction=${encodeURIComponent(directionId)}` : "";
   state.schedule = await apiFetch(
-    `/api/schedule?stop_id=${encodeURIComponent(stopId)}&route_id=${encodeURIComponent(currentRouteId())}`,
+    `/api/schedule?stop_id=${encodeURIComponent(stopId)}${dirParam}&route_id=${encodeURIComponent(currentRouteId())}`,
   );
 }
 
@@ -1122,10 +1146,10 @@ async function switchRoute() {
     console.warn("[BusTracker] Trip update fetch failed:", err);
   }
 
-  const stopId = getActiveStop();
+  const { stopId, directionId } = parseStopSelection(getActiveStop());
   if (stopId) {
     try {
-      await fetchScheduleForStop(stopId);
+      await fetchScheduleForStop(stopId, directionId);
     } catch {}
   }
 
@@ -1161,7 +1185,7 @@ function updateStatusDot(ok) {
 // ─── Commute Panel ────────────────────────────────────────────────────────────
 function updateCommutePanel() {
   const window = getActiveWindow();
-  const stopId = getActiveStop();
+  const { stopId } = parseStopSelection(getActiveStop());
 
   const badge = document.getElementById("commute-direction-indicator");
   if (window === "morning") {
@@ -1316,15 +1340,29 @@ window.testNotification = () => {
 };
 
 // ─── Settings Panel ───────────────────────────────────────────────────────────
+// A stop that serves both directions from the same stop_id (e.g. a
+// park-and-ride bay -- confirmed to exist on this route) gets split into
+// two options here, one per direction, so picking a boarding stop also
+// disambiguates which way the rider means -- without this, the Next
+// Buses/All Today's Trips lists for a stop like that would mix both
+// directions together with no way to tell them apart (the "Commute tab"
+// half of the bug #22 fixed for the map's stop-popup flow). "Outbound"/
+// "Inbound" matches the wording already used for this elsewhere (the Live
+// Buses legend's direction swatches).
 function populateStopDropdowns() {
   const mSelect = document.getElementById("morning-stop");
   const eSelect = document.getElementById("evening-stop");
 
   const opts = state.stops
-    .map(
-      (s) =>
-        `<option value="${escapeHtml(s.stop_id)}">${escapeHtml(s.stop_name)}</option>`,
-    )
+    .flatMap((s) => {
+      if ((s.directions?.length ?? 0) <= 1) {
+        return [`<option value="${escapeHtml(s.stop_id)}">${escapeHtml(s.stop_name)}</option>`];
+      }
+      return s.directions.map((d) => {
+        const label = `${s.stop_name} (${d === 1 ? "Inbound" : "Outbound"})`;
+        return `<option value="${escapeHtml(s.stop_id)}:${d}">${escapeHtml(label)}</option>`;
+      });
+    })
     .join("");
   const placeholder = '<option value="">— Select a stop —</option>';
 
@@ -1332,15 +1370,33 @@ function populateStopDropdowns() {
   eSelect.innerHTML = placeholder + opts;
 
   // Restore saved values
-  if (settings.morningStop) mSelect.value = settings.morningStop;
-  if (settings.eveningStop) eSelect.value = settings.eveningStop;
+  setStopSelectValue(mSelect, settings.morningStop);
+  setStopSelectValue(eSelect, settings.eveningStop);
+}
+
+// A saved boarding-stop value from before direction-qualified options
+// existed (a bare stop_id, for what's now a multi-direction stop like
+// 2234) no longer matches any <option> exactly -- setting .value to it is
+// a silent no-op, defaulting the <select> back to the placeholder. Left
+// alone, that's a trap: saving settings again while the dropdown looks
+// unset would overwrite the rider's actual saved choice with "". Falling
+// back to that stop's first direction-qualified option keeps the rider on
+// *a* valid boarding stop instead of silently losing their choice; they
+// can switch to the other direction afterward if that wasn't the one they
+// meant.
+function setStopSelectValue(selectEl, savedValue) {
+  if (!savedValue) return;
+  selectEl.value = savedValue;
+  if (selectEl.value === savedValue) return;
+  const fallback = Array.from(selectEl.options).find((o) => o.value.startsWith(savedValue + ":"));
+  if (fallback) selectEl.value = fallback.value;
 }
 
 function applySettingsToForm() {
   const routeSel = document.getElementById("route-select");
   if (routeSel) routeSel.value = settings.selectedRoute || "194";
-  document.getElementById("morning-stop").value = settings.morningStop;
-  document.getElementById("evening-stop").value = settings.eveningStop;
+  setStopSelectValue(document.getElementById("morning-stop"), settings.morningStop);
+  setStopSelectValue(document.getElementById("evening-stop"), settings.eveningStop);
   document.getElementById("morning-start").value = settings.morningStart;
   document.getElementById("morning-end").value = settings.morningEnd;
   document.getElementById("evening-start").value = settings.eveningStart;
@@ -1383,7 +1439,8 @@ document
 
     const newStop = getActiveStop();
     if (newStop !== prevStop) {
-      await fetchScheduleForStop(newStop);
+      const { stopId, directionId } = parseStopSelection(newStop);
+      await fetchScheduleForStop(stopId, directionId);
     }
     updateCommutePanel();
   });
@@ -1705,10 +1762,10 @@ async function init() {
     console.warn("[BusTracker] Initial trip update fetch failed:", err);
   }
 
-  const stopId = getActiveStop();
+  const { stopId, directionId } = parseStopSelection(getActiveStop());
   if (stopId) {
     try {
-      await fetchScheduleForStop(stopId);
+      await fetchScheduleForStop(stopId, directionId);
     } catch (err) {
       console.warn("[BusTracker] Schedule fetch failed:", err);
     }
@@ -1730,10 +1787,10 @@ async function init() {
 
   // Reload schedule for active stop every 5 minutes
   setInterval(async () => {
-    const sid = getActiveStop();
+    const { stopId: sid, directionId: sidDirection } = parseStopSelection(getActiveStop());
     if (sid) {
       try {
-        await fetchScheduleForStop(sid);
+        await fetchScheduleForStop(sid, sidDirection);
       } catch {}
       updateCommutePanel();
     }
