@@ -225,15 +225,33 @@ function stopDirectionClass(directionId) {
 // instead, which (if a bus is selected) deselects it and snaps the view
 // back to where it was before selection. iconSize/iconAnchor below size
 // the outer hit area; the visible dot is a separate, smaller, centered
-// inner element sized by CSS instead, so the two can differ.
+// inner element, so the two can differ. 22 is also the floor the hit area
+// never shrinks below, even at a zoom level where the (smaller) dot alone
+// wouldn't need it.
 const STOP_HIT_AREA = 22;
 
+// Dot size scales modestly with zoom instead of staying fixed -- proportionate
+// to how much of the map a stop actually covers, rather than looking
+// cluttered zoomed out and tiny zoomed in. 15 is the reference zoom (the
+// original fixed sizes, unchanged at that level); clamped at both ends so
+// dots stay reasonably sized at the map's low-zoom route overview and don't
+// balloon past the point of usefulness at its max zoom (19).
+function stopDotSize(selected) {
+  const zoom = map.getZoom();
+  const base = selected ? 14 : 10;
+  const perLevel = selected ? 1.5 : 1.1;
+  const [min, max] = selected ? [10, 22] : [6, 16];
+  return Math.round(Math.min(max, Math.max(min, base + (zoom - 15) * perLevel)));
+}
+
 function makeStopIcon(directionId, selected = false) {
+  const dotSize = stopDotSize(selected);
+  const hitArea = Math.max(STOP_HIT_AREA, dotSize + 12);
   return L.divIcon({
     className: "stop-marker-hitarea",
-    html: `<div class="stop-marker ${stopDirectionClass(directionId)}${selected ? " selected" : ""}"></div>`,
-    iconSize: [STOP_HIT_AREA, STOP_HIT_AREA],
-    iconAnchor: [STOP_HIT_AREA / 2, STOP_HIT_AREA / 2],
+    html: `<div class="stop-marker ${stopDirectionClass(directionId)}${selected ? " selected" : ""}" style="width:${dotSize}px;height:${dotSize}px"></div>`,
+    iconSize: [hitArea, hitArea],
+    iconAnchor: [hitArea / 2, hitArea / 2],
   });
 }
 
@@ -600,6 +618,16 @@ function drawStopMarkers() {
     state.stopMarkers.push(m);
   }
 }
+
+// stopDotSize() reads the map's current zoom, so a zoom change alone (no
+// selection change) needs every stop icon rebuilt too -- in place via
+// setIcon(), same as selectStopForFlow(), rather than drawStopMarkers()'s
+// full remove-and-recreate, which would tear down an open popup mid-zoom.
+map.on("zoomend", () => {
+  for (const m of state.stopMarkers) {
+    m.setIcon(makeStopIcon(state.selectedTripDirectionId, m.metroStop.stop_id === state.selectedStopId));
+  }
+});
 
 // Times pane is `null` while loading, an array (possibly empty) once fetched.
 // tripContext is `null` while loading or when there's nothing to show (see
