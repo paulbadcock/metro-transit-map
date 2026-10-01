@@ -1,6 +1,6 @@
 {
   "name": "returntowork",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Halifax Transit Route 194 real-time bus tracker",
   "main": "server.js",
   "type": "module",
