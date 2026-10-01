@@ -2,6 +2,7 @@ import express from 'express';
 import helmet from 'helmet';
 import fetch from 'node-fetch';
 import AdmZip from 'adm-zip';
+import { randomBytes } from 'crypto';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -263,19 +264,44 @@ async function getCached(key, fetchFn, force = false) {
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
 
+// Production (busmap.thisisunsafe.org) sits behind Cloudflare, which -- on
+// every proxied zone, regardless of any dashboard toggle -- injects its own
+// inline bot-detection bootstrap script (window.__CF$cv$params = ...) into
+// the page before </body>. Without a nonce, our CSP (correctly) blocks it
+// as an unrecognized inline script; Cloudflare's docs explicitly warn
+// against the fix of adding 'unsafe-inline' and instead recommend this:
+// if the outgoing CSP's script-src carries a nonce, Cloudflare's edge
+// parses the response header and copies that same nonce onto the inline
+// script it injects, so it passes CSP without weakening the policy for
+// anything else. A fresh nonce is generated per request below; our own
+// pages have no inline scripts of their own needing it applied directly.
+app.use((req, res, next) => {
+  res.locals.cspNonce = randomBytes(16).toString('base64');
+  next();
+});
+
 // CSP allow-list matches this app's actual resources: Leaflet and MapLibre
 // GL are loaded from unpkg.com (Leaflet's CSS also pulls marker icons from
 // there), the basemap's vector tiles/style/fonts/sprites all come from
 // OpenFreeMap's single tiles.openfreemap.org host, and everything else
-// (API calls, our own scripts/styles) is same-origin.
+// (API calls, our own scripts/styles) is same-origin. static.cloudflareinsights.com
+// / cloudflareinsights.com are allow-listed for Cloudflare Web Analytics'
+// RUM beacon -- not currently enabled on the zone, but harmless to allow
+// ahead of time since it's a fixed, known Cloudflare host, and saves a
+// repeat of this same CSP debugging if it's ever turned on later.
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", 'https://unpkg.com'],
+      scriptSrc: [
+        "'self'",
+        'https://unpkg.com',
+        'https://static.cloudflareinsights.com',
+        (req, res) => `'nonce-${res.locals.cspNonce}'`,
+      ],
       styleSrc: ["'self'", 'https://unpkg.com', "'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'blob:', 'https://unpkg.com', 'https://tiles.openfreemap.org'],
-      connectSrc: ["'self'", 'https://tiles.openfreemap.org'],
+      connectSrc: ["'self'", 'https://tiles.openfreemap.org', 'https://cloudflareinsights.com'],
       // MapLibre GL constructs its tile-parsing worker from a blob: URL --
       // necessary specifically because it's loaded cross-origin from
       // unpkg.com rather than self-hosted; self-hosting could drop the
