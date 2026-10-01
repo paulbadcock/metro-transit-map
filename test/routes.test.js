@@ -110,6 +110,82 @@ describe('GET /api/schedule', () => {
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), []);
   });
+
+  // Regression coverage for a real bug: a route with separate weekday/
+  // Saturday/holiday calendars (the live data has exactly this, via GTFS
+  // service_id families like "259.0.1"/"259.0.2"/"259.0.3") was showing
+  // every one of those overlapping schedules merged together every day,
+  // calendar.txt/calendar_dates.txt ignored entirely -- near-duplicate
+  // departure times a few minutes apart, several not actually running
+  // today, with inconsistent delay info between them since only the trips
+  // genuinely running today ever have real-time data to match against.
+  describe('today-only service calendar filtering', () => {
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+    function todayDateAndDay() {
+      // Mirrors getTodayServiceIds()'s own date/day derivation in server.js.
+      const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Halifax' }));
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      return { dateStr: `${y}${m}${d}`, dayName: dayNames[now.getDay()] };
+    }
+
+    function calendarRow(serviceId, activeDay) {
+      const row = { service_id: serviceId, start_date: '20200101', end_date: '20301231' };
+      for (const d of dayNames) row[d] = d === activeDay ? '1' : '0';
+      return row;
+    }
+
+    test('excludes a trip whose service calendar is not active today', async () => {
+      const { dayName } = todayDateAndDay();
+      const otherDayName = dayNames[(dayNames.indexOf(dayName) + 1) % 7];
+
+      gtfsData.calendars.set('today-svc', calendarRow('today-svc', dayName));
+      gtfsData.calendars.set('other-svc', calendarRow('other-svc', otherDayName));
+
+      gtfsData.trips.set('t-today', { trip_id: 't-today', route_id: '194', direction_id: '0', shape_id: 'sh1', trip_headsign: 'Today', service_id: 'today-svc' });
+      gtfsData.trips.set('t-other', { trip_id: 't-other', route_id: '194', direction_id: '0', shape_id: 'sh1', trip_headsign: 'Other day', service_id: 'other-svc' });
+      gtfsData.stopTimesByTrip.set('t-today', [
+        { trip_id: 't-today', arrival_time: '09:00:00', departure_time: '09:00:00', stop_id: 's2', stop_sequence: 1 },
+      ]);
+      gtfsData.stopTimesByTrip.set('t-other', [
+        { trip_id: 't-other', arrival_time: '09:05:00', departure_time: '09:05:00', stop_id: 's2', stop_sequence: 1 },
+      ]);
+
+      const res = await fetch(`${baseUrl}/api/schedule?route_id=194&stop_id=s2`);
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.deepEqual(body.map((s) => s.trip_id), ['t-today']);
+    });
+
+    test('respects a calendar_dates removal exception for today (e.g. a holiday)', async () => {
+      const { dateStr, dayName } = todayDateAndDay();
+
+      gtfsData.calendars.set('removed-today', calendarRow('removed-today', dayName));
+      gtfsData.calendarDates.set('removed-today', [
+        { service_id: 'removed-today', date: dateStr, exception_type: '2' },
+      ]);
+      gtfsData.trips.set('t-removed', { trip_id: 't-removed', route_id: '194', direction_id: '0', shape_id: 'sh1', trip_headsign: 'Removed', service_id: 'removed-today' });
+      gtfsData.stopTimesByTrip.set('t-removed', [
+        { trip_id: 't-removed', arrival_time: '09:00:00', departure_time: '09:00:00', stop_id: 's2', stop_sequence: 1 },
+      ]);
+
+      const res = await fetch(`${baseUrl}/api/schedule?route_id=194&stop_id=s2`);
+      assert.equal(res.status, 200);
+      assert.deepEqual((await res.json()).map((s) => s.trip_id), []);
+    });
+
+    test('falls back to unfiltered when no calendar data is loaded at all', async () => {
+      // beforeEach leaves calendars/calendarDates empty -- t1's service_id
+      // ('weekday') has no matching calendar entry, but getTodayServiceIds()
+      // returns null (not an empty set) when there's no calendar data to
+      // filter by in the first place, so nothing should be excluded.
+      const res = await fetch(`${baseUrl}/api/schedule?route_id=194&stop_id=s2`);
+      assert.equal(res.status, 200);
+      assert.deepEqual((await res.json()).map((s) => s.trip_id), ['t1']);
+    });
+  });
 });
 
 describe('GET /api/route-stops', () => {
