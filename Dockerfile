@@ -39,6 +39,9 @@ COPY --chown=65532:65532 public/ ./public/
 
 # Base image runs as non-root (the `node` user, uid 65532). It does ship busybox
 # sh and npm, but nothing here relies on either.
+# server.js defaults to 3000; set it here so a bare `docker run` matches
+# EXPOSE and the HEALTHCHECK, not just docker-compose (which also sets it).
+ENV PORT=4040
 EXPOSE 4040
 
 # No curl/wget in this image, so HEALTHCHECK execs node directly.
