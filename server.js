@@ -507,6 +507,17 @@ app.get('/api/schedule', (req, res) => {
 
   const { stopTimes } = getRouteInfo(route_id || '194');
   const dir = direction !== undefined ? parseInt(direction) : null;
+  // Same today-only filtering /api/service-status already applies -- without
+  // it, every trip that ever visits this stop on any day shows up every day,
+  // calendar and calendar_dates exceptions ignored entirely. A route with
+  // separate weekday/Saturday/Sunday (or holiday) service patterns ends up
+  // with multiple overlapping schedules merged together: near-duplicate
+  // departure times a few minutes apart, several of which aren't actually
+  // running today, and (since GTFS-RT only ever has data for trips that
+  // really are running) inconsistent delay info between what look like the
+  // same departure. null means no calendar data was loaded at all -- fall
+  // back to unfiltered rather than returning nothing.
+  const todayServiceIds = getTodayServiceIds();
 
   const tripStopEntries = stopTimes.filter(st => st.stop_id === stop_id);
 
@@ -515,6 +526,7 @@ app.get('/api/schedule', (req, res) => {
     const trip = gtfsData.trips.get(st.trip_id);
     if (!trip) continue;
     if (dir !== null && parseInt(trip.direction_id) !== dir) continue;
+    if (todayServiceIds !== null && !todayServiceIds.has(trip.service_id)) continue;
 
     results.push({
       trip_id: st.trip_id,
