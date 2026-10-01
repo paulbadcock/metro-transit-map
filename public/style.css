@@ -675,6 +675,16 @@ html, body {
 .bus-delay-badge.late  { color: var(--color-accent); }
 .bus-delay-badge.early { color: var(--color-success); }
 
+/* The divIcon's own box (sized by makeStopIcon's STOP_HIT_AREA) -- an
+   invisible, larger click/tap target than the dot it wraps, centered on
+   the same point, so a near miss still lands on the stop instead of
+   falling through to the map underneath. */
+.stop-marker-hitarea {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .stop-marker {
   width: 10px;
   height: 10px;
@@ -686,6 +696,8 @@ html, body {
 .stop-marker.dir-outbound { background: var(--color-dir-outbound); }
 .stop-marker.dir-inbound  { background: var(--color-dir-inbound); }
 .stop-marker.selected {
+  width: 14px;
+  height: 14px;
   border-color: var(--color-accent, #fff);
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4);
 }
