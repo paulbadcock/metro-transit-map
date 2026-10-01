@@ -685,6 +685,9 @@ html, body {
   justify-content: center;
 }
 
+/* width/height come from an inline style (stopDotSize() in app.js scales
+   the dot with the map's current zoom level) -- the 10px here is just a
+   fallback for the brief instant before that inline style is set. */
 .stop-marker {
   width: 10px;
   height: 10px;
@@ -696,8 +699,6 @@ html, body {
 .stop-marker.dir-outbound { background: var(--color-dir-outbound); }
 .stop-marker.dir-inbound  { background: var(--color-dir-inbound); }
 .stop-marker.selected {
-  width: 14px;
-  height: 14px;
   border-color: var(--color-accent, #fff);
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4);
 }
