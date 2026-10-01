@@ -30,19 +30,31 @@
 
   // schedule entries come from GET /api/schedule?stop_id=X, so they don't
   // carry their own stop_id -- the caller's stopId applies to every row.
-  function computeNextBuses(schedule, stopId, allTripUpdates, nowMin, limit = 3) {
+  // activeTripIds is the set of trip_ids a real vehicle is currently
+  // running (state.vehicles' trip_ids) -- Halifax's GTFS-RT feed predicts
+  // delay for a vehicle's *upcoming* trip in its block by propagating
+  // forward from its current trip's progress, before that next trip has
+  // actually started. That's a forecast, not an observed fact: it can't
+  // know the vehicle will turn around at the same speed, or whether its
+  // next pickup runs on schedule. So a trip's predicted delay is only
+  // applied/displayed once a vehicle is actually confirmed running that
+  // specific trip_id; otherwise it's shown as its plain scheduled time
+  // with no delay claim at all (see `started` below).
+  function computeNextBuses(schedule, stopId, allTripUpdates, activeTripIds, nowMin, limit = 3) {
     if (!stopId || !schedule || schedule.length === 0) return [];
 
     const delayByTrip = buildDelayMap(allTripUpdates);
+    const active = activeTripIds || new Set();
 
     return schedule
       .map((s) => {
         const depMin = timeStringToMinutes(s.departure_time);
-        const delaySeconds = delayByTrip[s.trip_id + "_" + stopId]?.departure_delay ?? 0;
+        const started = active.has(s.trip_id);
+        const delaySeconds = started ? (delayByTrip[s.trip_id + "_" + stopId]?.departure_delay ?? 0) : 0;
         const delayMin = Math.round(delaySeconds / 60);
         const estimatedMin = depMin + delayMin;
         const minutesAway = estimatedMin - nowMin;
-        return { ...s, depMin, delayMin, estimatedMin, minutesAway };
+        return { ...s, depMin, delayMin, estimatedMin, minutesAway, started };
       })
       .filter((s) => s.minutesAway >= -1 && s.minutesAway <= 120)
       .sort((a, b) => a.minutesAway - b.minutesAway)
