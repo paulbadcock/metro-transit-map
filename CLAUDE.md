@@ -21,6 +21,12 @@ On first start (or when GTFS data is >24h old), `server.js` downloads `google_tr
 
 CI (`.github/workflows/ci.yml`) runs lint, tests, `npm audit --audit-level=high`, and a Docker build check on every push/PR to `main`.
 
+### Versioning
+
+Every push to `main` *is* a release: CI's `publish` job auto-bumps `package.json`'s patch version (`npm version patch`), commits that back to `main` and tags it (`vX.Y.Z`), then builds the image from that bumped commit — so the version baked into any given deploy always matches a real, findable git tag, with no manual version-bumping step. The bump commit's message carries `[skip ci]`, which (a) stops that push from re-triggering the whole workflow (avoiding an infinite bump loop) and (b) is also checked explicitly in `publish`'s own `if:` as a second guard against a manual re-run of that specific commit double-bumping.
+
+`server.js` reads its own baked-in `package.json` version at startup and exposes it via `GET /api/status` (`{ version, ... }`); the frontend fetches it once at load and shows it in Settings → Debug (`#app-version`) and as a suffix on the status dot's tooltip — so confirming a deploy actually landed (vs. still serving a stale image) is a glance instead of grepping `app.js` for a telltale string. Don't hand-edit `package.json`'s `version` field — the next push overwrites whatever's there.
+
 ---
 
 ## Docker deployment

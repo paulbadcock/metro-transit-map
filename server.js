@@ -20,6 +20,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// package.json's version is bumped and tagged automatically by CI's publish
+// job on every push to main (see .github/workflows/ci.yml), so whatever's
+// baked into a given image/deploy is always a distinct, traceable version --
+// exposed via /api/status and shown in the UI (Settings > Debug) so a stale
+// deploy is visible at a glance instead of having to grep app.js by hand.
+const APP_VERSION = JSON.parse(readFileSync(join(__dirname, 'package.json'), 'utf8')).version;
+
 // Distinguishes "running as the real server" from "imported as a module"
 // (e.g. by integration tests) -- gates both the process-exit error handlers
 // below and the startup()/app.listen() call at the bottom of this file.
@@ -633,6 +640,7 @@ app.get('/api/status', (req, res) => {
   const routeId = req.query.route_id || '194';
   const { tripIds, stopIds, stopTimes } = getRouteInfo(routeId);
   res.json({
+    version: APP_VERSION,
     routeId,
     routesLoaded: gtfsData.routes.size,
     stopsLoaded: gtfsData.stops.size,
