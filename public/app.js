@@ -594,13 +594,18 @@ function drawStopMarkers() {
 }
 
 // Times pane is `null` while loading, an array (possibly empty) once fetched.
-// tripContext is `null` while loading or when there's nothing to show
-// (before/after entries relative to the selected bus's own trip -- see
-// computeStopTripContext). The "after" entry is the same trip as one of the
-// rows in the departures list below (it's the next departure at this stop
-// after the selected bus's own visit) -- rather than showing it twice, it's
-// tagged in place in that list, and only falls back to its own row here if
-// it didn't make the list (e.g. it's further out than the list's limit).
+// tripContext is `null` while loading or when there's nothing to show (see
+// computeStopTripContext): busTripId is the selected bus's own trip, so it
+// can be tagged "your bus" if its own visit to this stop is still upcoming
+// and therefore present in the departures list below; before/after are the
+// scheduled trips immediately adjacent to it, for context, not the rider's
+// own bus. "after" is frequently the same trip as the departures list's
+// first row too (typically once the rider's own bus has already passed this
+// stop, so it's the soonest trip left) -- rather than showing it twice,
+// that row is marked in place in the list, and "after" only falls back to
+// its own context row here if it didn't make the list (e.g. too far out for
+// the list's limit). That in-list mark is deliberately not "your bus" --
+// it's the bus *after* yours, not yours.
 function buildStopPopup(stopName, stopId, upcoming, tripContext) {
   const header = `<strong>${escapeHtml(stopName)}</strong><br>Stop #${escapeHtml(stopId)}`;
 
@@ -617,8 +622,8 @@ function buildStopPopup(stopName, stopId, upcoming, tripContext) {
         if (s.delayMin > 1) delayHtml = `<span class="delay late">+${s.delayMin} min</span>`;
         else if (s.delayMin < -1) delayHtml = `<span class="delay early">${s.delayMin} min</span>`;
 
-        const isYourBus = tripContext?.after?.trip_id === s.trip_id;
-        if (isYourBus) afterShownInList = true;
+        const isYourBus = tripContext?.busTripId != null && tripContext.busTripId === s.trip_id;
+        if (tripContext?.after?.trip_id === s.trip_id) afterShownInList = true;
 
         return `
           <div class="stop-popup-time-row${isYourBus ? " your-bus" : ""}">
@@ -733,7 +738,12 @@ function computeStopTripContext(stopId, stop, schedule) {
   }
 
   const passed = hasBusPassedStop(stop);
-  return { before: passed ? null : before, after, passed };
+  // busTripId powers the departures list's "your bus" tag (see
+  // buildStopPopup). No need to null it out when the stop's already been
+  // passed -- the selected bus's own departure is in the past by then, so
+  // it's already excluded from that list (computeNextBuses only returns
+  // upcoming trips) and the tag simply won't match anything.
+  return { before: passed ? null : before, after, passed, busTripId: bus?.trip_id ?? null };
 }
 
 async function ensureStopScheduleCached(stopId) {
@@ -747,7 +757,17 @@ async function ensureStopScheduleCached(stopId) {
 }
 
 function renderStopPopupContent(marker, stop, schedule) {
-  const upcoming = NextBuses.computeNextBuses(schedule, stop.stop_id, state.allTripUpdates, nowMinutes(), 5);
+  // This popup only ever opens on one of the selected trip's own stop
+  // markers (drawStopMarkers() only draws markers for state.selectedTripStops,
+  // which only has entries once a bus is selected), so every rider seeing
+  // this popup already has one specific direction in mind. A handful of
+  // stops (e.g. a park-and-ride bay) serve both directions from the same
+  // stop_id though, and /api/schedule's response isn't direction-filtered
+  // -- without this filter, the departures list would mix in the opposite
+  // direction's trips too, diluting (or outright pushing out of the
+  // 5-row limit) the very row the "your bus" tag is trying to highlight.
+  const dirSchedule = schedule.filter((e) => e.direction_id === state.selectedTripDirectionId);
+  const upcoming = NextBuses.computeNextBuses(dirSchedule, stop.stop_id, state.allTripUpdates, nowMinutes(), 5);
   const tripContext = computeStopTripContext(stop.stop_id, stop, schedule);
   marker.setPopupContent(buildStopPopup(stop.stop_name, stop.stop_id, upcoming, tripContext));
 }
