@@ -263,9 +263,10 @@ async function getCached(key, fetchFn, force = false) {
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
 
-// CSP allow-list matches this app's actual resources: Leaflet is loaded
-// from unpkg.com (its CSS also pulls marker icons from there), map tiles
-// come from OpenStreetMap's tile server, and everything else
+// CSP allow-list matches this app's actual resources: Leaflet and MapLibre
+// GL are loaded from unpkg.com (Leaflet's CSS also pulls marker icons from
+// there), the basemap's vector tiles/style/fonts/sprites all come from
+// OpenFreeMap's single tiles.openfreemap.org host, and everything else
 // (API calls, our own scripts/styles) is same-origin.
 app.use(helmet({
   contentSecurityPolicy: {
@@ -273,8 +274,13 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", 'https://unpkg.com'],
       styleSrc: ["'self'", 'https://unpkg.com', "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:', 'https://unpkg.com', 'https://tile.openstreetmap.org'],
-      connectSrc: ["'self'"],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https://unpkg.com', 'https://tiles.openfreemap.org'],
+      connectSrc: ["'self'", 'https://tiles.openfreemap.org'],
+      // MapLibre GL constructs its tile-parsing worker from a blob: URL --
+      // necessary specifically because it's loaded cross-origin from
+      // unpkg.com rather than self-hosted; self-hosting could drop the
+      // blob: allowance and use 'self' alone.
+      workerSrc: ["'self'", 'blob:'],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
       // Helmet includes this in its CSP defaults, which would otherwise make
