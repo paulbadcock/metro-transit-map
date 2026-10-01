@@ -5,6 +5,14 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 
+# Strips ~30MB of transitive dependencies that are only installed because
+# gtfs-realtime-bindings mis-declares its own build-time-only codegen CLI
+# (protobufjs-cli) as a regular dependency -- see the script for the full
+# explanation. Needs package.json/package-lock.json already in place (just
+# copied above) since it inspects the installed tree via `npm ls`.
+COPY scripts/prune-unused-transitive-deps.js ./scripts/
+RUN node scripts/prune-unused-transitive-deps.js
+
 # Pre-create the GTFS data directory here (this stage still has a shell) so
 # it exists in the image with the right ownership. docker-compose mounts a
 # named volume at this path; on first use Docker seeds a fresh volume from
