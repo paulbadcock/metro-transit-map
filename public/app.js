@@ -217,15 +217,23 @@ function stopDirectionClass(directionId) {
   return directionId === 1 ? "dir-inbound" : "dir-outbound";
 }
 
+// The clickable/tappable area is deliberately much bigger than the visible
+// dot: a divIcon's own box *is* its entire hit target (no padding to miss
+// into before the click falls through to the map underneath), and at the
+// dot's actual visual size that made stops hard to hit reliably -- a near
+// miss doesn't just fail to open the popup, it hits the map background
+// instead, which (if a bus is selected) deselects it and snaps the view
+// back to where it was before selection. iconSize/iconAnchor below size
+// the outer hit area; the visible dot is a separate, smaller, centered
+// inner element sized by CSS instead, so the two can differ.
+const STOP_HIT_AREA = 22;
+
 function makeStopIcon(directionId, selected = false) {
-  // iconSize/iconAnchor become inline styles on the div, which would
-  // override a CSS width/height on `.selected` -- so the bigger selected
-  // size is set here instead of in the stylesheet.
-  const size = selected ? 14 : 10;
   return L.divIcon({
-    className: `stop-marker ${stopDirectionClass(directionId)}${selected ? " selected" : ""}`,
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
+    className: "stop-marker-hitarea",
+    html: `<div class="stop-marker ${stopDirectionClass(directionId)}${selected ? " selected" : ""}"></div>`,
+    iconSize: [STOP_HIT_AREA, STOP_HIT_AREA],
+    iconAnchor: [STOP_HIT_AREA / 2, STOP_HIT_AREA / 2],
   });
 }
 
