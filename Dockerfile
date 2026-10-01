@@ -20,7 +20,13 @@ RUN node scripts/prune-unused-transitive-deps.js
 # this the volume ends up root-owned and unwritable by the non-root runtime.
 RUN mkdir -p /app/data/gtfs
 
-FROM gcr.io/distroless/nodejs26-debian13:nonroot AS runtime
+# Chainguard's free tier only publishes :latest (no version tags), so it's
+# pinned by digest for reproducible builds -- Dependabot's docker ecosystem
+# opens PRs to bump the digest. Note :latest tracks the newest Node major,
+# odd-numbered (non-LTS) releases included, so review those bumps rather than
+# auto-merging. Avoid :latest-slim: it stopped being rebuilt on the free tier
+# (stuck on Node 25 as of 2026-09).
+FROM cgr.dev/chainguard/node:latest@sha256:67b35eec824b295fe0cc2a0e230f85adca6caef692725f6abf1581ad1848b04e AS runtime
 
 WORKDIR /app
 
@@ -31,12 +37,12 @@ COPY --chown=65532:65532 server.js ./
 COPY --chown=65532:65532 lib/ ./lib/
 COPY --chown=65532:65532 public/ ./public/
 
-# Base image runs as non-root (uid 65532) with no shell/package manager present.
+# Base image runs as non-root (the `node` user, uid 65532). It does ship busybox
+# sh and npm, but nothing here relies on either.
 EXPOSE 4040
 
-# No shell in this image, so HEALTHCHECK must exec node directly rather than
-# a shell one-liner with curl/wget.
+# No curl/wget in this image, so HEALTHCHECK execs node directly.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD ["/nodejs/bin/node", "-e", "fetch(`http://localhost:${process.env.PORT || 4040}/api/status`).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+  CMD ["/usr/bin/node", "-e", "fetch(`http://localhost:${process.env.PORT || 4040}/api/status`).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
 
 CMD ["server.js"]

@@ -74,7 +74,7 @@ returntowork/
 ├── lib/
 │   └── gtfs-utils.js  # Pure GTFS parsing/merge logic (unit tested)
 ├── package.json
-├── Dockerfile          # Multi-stage: node:24-slim build → distroless nonroot runtime
+├── Dockerfile          # Multi-stage: node:26-slim build → Chainguard node runtime (non-root)
 ├── docker-compose.yml
 ├── public/
 │   ├── index.html     # Single-page app shell
@@ -136,7 +136,7 @@ To test: open the browser console and run `testNotification()`.
 ```bash
 docker compose up -d
 ```
-Runs a hardened, non-root, distroless container with health checks, log rotation, and graceful shutdown. See [CLAUDE.md](CLAUDE.md#docker-deployment) for details.
+Runs a hardened, non-root container on Chainguard's minimal node image with health checks, log rotation, and graceful shutdown. See [CLAUDE.md](CLAUDE.md#docker-deployment) for details.
 
 ### Cloudflare Tunnel (no code changes)
 Run the Node.js server (locally or in the Docker container) and expose it via `cloudflared tunnel`. Cloudflare handles HTTPS and your domain without opening firewall ports.
