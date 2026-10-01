@@ -18,6 +18,7 @@ WORKDIR /app
 
 COPY --from=build --chown=65532:65532 /app/node_modules ./node_modules
 COPY --from=build --chown=65532:65532 /app/data ./data
+COPY --chown=65532:65532 package.json ./
 COPY --chown=65532:65532 server.js ./
 COPY --chown=65532:65532 lib/ ./lib/
 COPY --chown=65532:65532 public/ ./public/
