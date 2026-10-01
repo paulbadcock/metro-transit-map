@@ -212,6 +212,16 @@ function getTripDelayMinutes(tripId) {
   return delaySeconds != null ? Math.round(delaySeconds / 60) : null;
 }
 
+// trip_ids a real vehicle is currently out running, per the latest vehicle
+// positions poll -- used to gate whether a trip's predicted delay is
+// trustworthy enough to apply/display (see computeNextBuses in
+// next-buses.js for why: Halifax's feed predicts a vehicle's *upcoming*
+// trip in its block from its current trip's progress, before that next
+// trip has actually started).
+function activeTripIdSet() {
+  return new Set(state.vehicles.map((v) => v.trip_id).filter(Boolean));
+}
+
 function stopDirectionClass(directionId) {
   if (directionId == null) return "";
   return directionId === 1 ? "dir-inbound" : "dir-outbound";
@@ -678,7 +688,10 @@ function buildStopPopup(stopName, stopId, upcoming, tripContext) {
   } else {
     timesHtml = `<div class="stop-popup-times">${upcoming
       .map((s) => {
-        let delayHtml = `<span class="delay ontime">On time</span>`;
+        // A trip with no vehicle running it yet gets no delay claim at all
+        // (see computeNextBuses in next-buses.js) -- "Scheduled" instead of
+        // "On time" so it doesn't read as a confirmed real-time status.
+        let delayHtml = `<span class="delay ontime">${s.started ? "On time" : "Scheduled"}</span>`;
         if (s.delayMin > 1) delayHtml = `<span class="delay late">+${s.delayMin} min</span>`;
         else if (s.delayMin < -1) delayHtml = `<span class="delay early">${s.delayMin} min</span>`;
 
@@ -707,7 +720,7 @@ function buildStopPopup(stopName, stopId, upcoming, tripContext) {
 // (the "before" row is often already in the past relative to now, even
 // though it's still "before" the selected bus in schedule order).
 function buildTripContextRow(label, s) {
-  let delayHtml = `<span class="delay ontime">On time</span>`;
+  let delayHtml = `<span class="delay ontime">${s.started ? "On time" : "Scheduled"}</span>`;
   if (s.delayMin > 1) delayHtml = `<span class="delay late">+${s.delayMin} min</span>`;
   else if (s.delayMin < -1) delayHtml = `<span class="delay early">${s.delayMin} min</span>`;
 
@@ -766,12 +779,17 @@ function computeStopTripContext(stopId, stop, schedule) {
     .sort((a, b) => a.departure_time.localeCompare(b.departure_time));
 
   const delayByTrip = NextBuses.buildDelayMap(state.allTripUpdates);
+  const active = activeTripIdSet();
   const decorate = (e) => {
     const depMin = timeStringToMinutes(e.departure_time);
-    const delaySeconds = delayByTrip[e.trip_id + "_" + stopId]?.departure_delay ?? 0;
+    const started = active.has(e.trip_id);
+    // See computeNextBuses in next-buses.js -- same reasoning applies to
+    // the before/after context rows: don't apply a trip's predicted delay
+    // until a vehicle is actually confirmed running it.
+    const delaySeconds = started ? (delayByTrip[e.trip_id + "_" + stopId]?.departure_delay ?? 0) : 0;
     const delayMin = Math.round(delaySeconds / 60);
     const estimatedMin = depMin + delayMin;
-    return { ...e, depMin, delayMin, estimatedMin, minutesAway: estimatedMin - nowMinutes() };
+    return { ...e, depMin, delayMin, estimatedMin, minutesAway: estimatedMin - nowMinutes(), started };
   };
 
   const idx = bus ? dirEntries.findIndex((e) => e.trip_id === bus.trip_id) : -1;
@@ -827,7 +845,7 @@ function renderStopPopupContent(marker, stop, schedule) {
   // direction's trips too, diluting (or outright pushing out of the
   // 5-row limit) the very row the "your bus" tag is trying to highlight.
   const dirSchedule = schedule.filter((e) => e.direction_id === state.selectedTripDirectionId);
-  const upcoming = NextBuses.computeNextBuses(dirSchedule, stop.stop_id, state.allTripUpdates, nowMinutes(), 5);
+  const upcoming = NextBuses.computeNextBuses(dirSchedule, stop.stop_id, state.allTripUpdates, activeTripIdSet(), nowMinutes(), 5);
   const tripContext = computeStopTripContext(stop.stop_id, stop, schedule);
   marker.setPopupContent(buildStopPopup(stop.stop_name, stop.stop_id, upcoming, tripContext));
 }
@@ -1206,7 +1224,7 @@ function updateCommutePanel() {
 }
 
 function computeNextBuses(stopId, limit = 3) {
-  return NextBuses.computeNextBuses(state.schedule, stopId, state.allTripUpdates, nowMinutes(), limit);
+  return NextBuses.computeNextBuses(state.schedule, stopId, state.allTripUpdates, activeTripIdSet(), nowMinutes(), limit);
 }
 
 function updateNextBuses(stopId) {
@@ -1232,7 +1250,7 @@ function updateNextBuses(stopId) {
       } else if (s.delayMin < -1) {
         delayHtml = `<div class="delay early">${s.delayMin} min early</div>`;
       } else {
-        delayHtml = `<div class="delay ontime">On time</div>`;
+        delayHtml = `<div class="delay ontime">${s.started ? "On time" : "Scheduled"}</div>`;
       }
 
       return `
