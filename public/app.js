@@ -163,7 +163,7 @@ function busIconTransform(bearing) {
   return `transform:rotate(${r}deg)`;
 }
 
-function makeBusIcon(bearing, timestamp, delayMin, directionId) {
+function makeBusIcon(bearing, timestamp, delayMin, directionId, isSelected = false) {
   const rotation = busIconTransform(bearing);
   let ageBadge = "";
   if (timestamp) {
@@ -186,10 +186,11 @@ function makeBusIcon(bearing, timestamp, delayMin, directionId) {
 
   const dirClass = busDirectionClass(directionId);
   const discHtml = dirClass ? `<div class="bus-direction-disc ${dirClass}"></div>` : "";
+  const wrapClass = `bus-marker-wrap${isSelected ? " selected" : ""}`;
 
   return L.divIcon({
     className: "",
-    html: `<div class="bus-marker-wrap">${discHtml}<div class="${iconClass}" style="${rotation}">🚌</div>${ageBadge}${delayBadge}</div>`,
+    html: `<div class="${wrapClass}">${discHtml}<div class="${iconClass}" style="${rotation}">🚌</div>${ageBadge}${delayBadge}</div>`,
     iconSize: [28, 28],
     iconAnchor: [14, 14],
     popupAnchor: [0, -14],
@@ -412,6 +413,7 @@ function selectBus(id) {
   state.selectedStopId = null;
   highlightBusInList(id);
   applyVehicleVisibility();
+  refreshBusMarkerIcons();
 
   const v = state.vehicles.find((x) => x.id === id);
   if (v && v.trip_id) {
@@ -455,6 +457,7 @@ function deselectBus() {
   state.selectedTripDirectionId = null;
   highlightBusInList(null);
   applyVehicleVisibility();
+  refreshBusMarkerIcons();
   drawStopMarkers();
   updateRouteFlowHighlight();
 
@@ -520,6 +523,22 @@ function applyVehicleVisibility() {
   }
 }
 
+// Re-renders every vehicle marker's icon in place so a selection change is
+// reflected immediately (a ring around the selected bus's direction disc --
+// see makeBusIcon/.bus-marker-wrap.selected) instead of waiting for the next
+// 15s vehicle poll to happen to pass the current state.selectedBusId
+// through. Only the selected bus's marker is actually visible at a time
+// anyway (applyVehicleVisibility hides the rest), but this still has to run
+// on deselect too, so a bus shown again later doesn't carry a stale ring.
+function refreshBusMarkerIcons() {
+  for (const v of state.vehicles) {
+    const marker = state.vehicleMarkers.get(v.id);
+    if (!marker) continue;
+    const delayMin = getTripDelayMinutes(v.trip_id);
+    marker.setIcon(makeBusIcon(v.bearing, v.timestamp, delayMin, v.direction_id, v.id === state.selectedBusId));
+  }
+}
+
 function updateVehicleMarkers() {
   const seenIds = new Set();
 
@@ -531,11 +550,11 @@ function updateVehicleMarkers() {
     if (state.vehicleMarkers.has(v.id)) {
       const marker = state.vehicleMarkers.get(v.id);
       marker.setLatLng([v.lat, v.lon]);
-      marker.setIcon(makeBusIcon(v.bearing, v.timestamp, delayMin, v.direction_id));
+      marker.setIcon(makeBusIcon(v.bearing, v.timestamp, delayMin, v.direction_id, v.id === state.selectedBusId));
       marker.getPopup()?.setContent(buildBusPopup(v, delayMin));
     } else {
       const marker = L.marker([v.lat, v.lon], {
-        icon: makeBusIcon(v.bearing, v.timestamp, delayMin, v.direction_id),
+        icon: makeBusIcon(v.bearing, v.timestamp, delayMin, v.direction_id, v.id === state.selectedBusId),
         title: `Bus ${v.label || v.id}`,
         zIndexOffset: 100,
       })
