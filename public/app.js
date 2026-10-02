@@ -353,8 +353,13 @@ function parseStopSelection(raw) {
 }
 
 // ─── API Calls ────────────────────────────────────────────────────────────────
+// Capped so one request stalled on a flaky mobile connection can't hang
+// init() (and with it, the polling it starts) indefinitely. Comfortably
+// above the server's own 10s timeout on its upstream GTFS-RT fetches.
+const API_TIMEOUT_MS = 20_000;
+
 async function apiFetch(url) {
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`API error ${res.status}: ${url}`);
   return res.json();
 }
@@ -1479,7 +1484,7 @@ document
     saveSettings(settings);
 
     // Request notification permission if enabled
-    if (settings.notifEnable && Notification.permission === "default") {
+    if (settings.notifEnable && notificationsSupported() && Notification.permission === "default") {
       await Notification.requestPermission();
     }
 
@@ -1773,48 +1778,56 @@ async function init() {
 
   updateRouteHeader();
 
-  // Load routes first so the selector is populated before applySettingsToForm
   try {
-    await fetchRoutes();
-  } catch (err) {
-    console.warn("[BusTracker] Could not load routes:", err);
+    // Load routes first so the selector is populated before applySettingsToForm
+    try {
+      await fetchRoutes();
+    } catch (err) {
+      console.warn("[BusTracker] Could not load routes:", err);
+    }
+
+    applySettingsToForm();
+    applySidebarExpanded(settings.sidebarExpanded);
+    await initTrafficControl();
+    loadAppVersion(); // not awaited -- purely informational, never blocks startup
+
+    // Request notification permission up front if enabled. iOS Safari (outside
+    // a home-screen web app) has no Notification global at all, so this must
+    // be guarded -- unguarded, it threw here and aborted init() before the
+    // first vehicle fetch or any polling, leaving the map empty until the
+    // rider hit Refresh.
+    if (settings.notifEnable && notificationsSupported() && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+
+    await loadInitialData();
+  } finally {
+    // Whatever happened above, keep polling -- a failed first load then
+    // recovers on its own at the next tick instead of waiting for Refresh.
+    startPolling();
   }
 
-  applySettingsToForm();
-  applySidebarExpanded(settings.sidebarExpanded);
-  await initTrafficControl();
-  loadAppVersion(); // not awaited -- purely informational, never blocks startup
+  console.log("[BusTracker] Ready.");
+}
 
-  // Request notification permission up front if enabled
-  if (settings.notifEnable && Notification.permission === "default") {
-    Notification.requestPermission();
-  }
-
-  // Initial data load
-  try {
-    await fetchStops();
-  } catch (err) {
-    console.warn("[BusTracker] Could not load stops:", err);
-  }
-
-  try {
-    await fetchRoutePolyline();
-  } catch (err) {
-    console.warn("[BusTracker] Could not load route polyline:", err);
-  }
-
-  try {
-    await fetchVehicles();
-  } catch (err) {
-    console.error("[BusTracker] Initial vehicle fetch failed:", err);
-    updateStatusDot(false);
-  }
-
-  try {
-    await fetchTripUpdates();
-  } catch (err) {
-    console.warn("[BusTracker] Initial trip update fetch failed:", err);
-  }
+async function loadInitialData() {
+  // Live data and the static route data are independent, so fetch them in
+  // parallel -- the buses shouldn't wait behind stops and the route shape.
+  await Promise.all([
+    fetchVehicles().catch((err) => {
+      console.error("[BusTracker] Initial vehicle fetch failed:", err);
+      updateStatusDot(false);
+    }),
+    fetchTripUpdates().catch((err) => {
+      console.warn("[BusTracker] Initial trip update fetch failed:", err);
+    }),
+    fetchStops().catch((err) => {
+      console.warn("[BusTracker] Could not load stops:", err);
+    }),
+    fetchRoutePolyline().catch((err) => {
+      console.warn("[BusTracker] Could not load route polyline:", err);
+    }),
+  ]);
 
   const { stopId, directionId } = parseStopSelection(getActiveStop());
   if (stopId) {
@@ -1828,8 +1841,9 @@ async function init() {
   updateCommutePanel();
   await checkServiceStatus();
   await checkAlerts();
+}
 
-  // Start polling
+function startPolling() {
   scheduleVehiclePoll();
   updateNextRefreshCountdown();
   setInterval(pollTripUpdates, 15_000);
@@ -1850,7 +1864,12 @@ async function init() {
     }
   }, 5 * 60_000);
 
-  console.log("[BusTracker] Ready.");
+  // Mobile browsers freeze timers in background tabs, so a phone tab
+  // brought back to the foreground can sit on stale (or never-loaded)
+  // positions for up to a full poll interval. Poll right away instead.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") scheduleVehiclePoll(0);
+  });
 }
 
 init().catch((err) => console.error("[BusTracker] Init error:", err));
