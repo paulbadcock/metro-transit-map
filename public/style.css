@@ -373,7 +373,9 @@ html, body {
 .bus-item:hover { opacity: 0.8; }
 
 .bus-badge {
-  background: var(--color-accent);
+  /* Neutral fallback for a vehicle with no direction_id; otherwise matches
+     the map marker's direction colour (see busDirectionClass in app.js). */
+  background: var(--color-surface2);
   color: white;
   padding: 3px 8px;
   border-radius: 4px;
@@ -381,6 +383,8 @@ html, body {
   font-weight: 700;
   white-space: nowrap;
 }
+.bus-badge.dir-outbound { background: var(--color-dir-outbound); }
+.bus-badge.dir-inbound  { background: var(--color-dir-inbound); }
 
 .bus-info {
   flex: 1;

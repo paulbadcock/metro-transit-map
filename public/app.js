@@ -1114,7 +1114,7 @@ function updateBusList() {
     .map(
       (v) => `
     <div class="bus-item" data-bus-id="${escapeHtml(v.id)}">
-      <div class="bus-badge">${escapeHtml(currentRouteId())}</div>
+      <div class="bus-badge ${busDirectionClass(v.direction_id) ?? ""}">${escapeHtml(currentRouteId())}</div>
       <div class="bus-info">
         <div class="bus-label">Bus #${escapeHtml(v.label || v.id)}</div>
         <div class="bus-meta">${v.trip_id ? `Trip ${escapeHtml(v.trip_id)}` : "No trip"}</div>
