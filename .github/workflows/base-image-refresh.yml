@@ -1,0 +1,140 @@
+name: Base image refresh
+
+# The runtime image is pinned to a Chainguard digest (see Dockerfile), so a
+# CVE fixed upstream never reaches the published image until that digest
+# changes. Dependabot only bumps it on its weekly schedule and doesn't look
+# at OS packages inside the image at all, so a fixable CVE can sit in the
+# published image for days without anything flagging it.
+#
+# Every day this checks whether the published image has fixable HIGH/CRITICAL
+# CVEs and the upstream digest has moved to one that clears them. If so, it
+# commits the new digest to main and dispatches CI, which tests, scans and
+# publishes a new release as for any other push. If the new digest also
+# changes Node's major version, it opens an issue for review instead, since
+# :latest tracks odd-numbered (non-LTS) majors too.
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: read
+  actions: write
+  issues: write
+
+concurrency:
+  group: base-image-refresh
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compare pinned digest to upstream
+        id: digest
+        run: |
+          pinned=$(grep -oP 'cgr\.dev/chainguard/node:latest@\Ksha256:[0-9a-f]{64}' Dockerfile)
+          upstream=$(docker buildx imagetools inspect cgr.dev/chainguard/node:latest --format '{{json .Manifest.Digest}}' | tr -d '"')
+          echo "pinned=${pinned}" >> "$GITHUB_OUTPUT"
+          echo "upstream=${upstream}" >> "$GITHUB_OUTPUT"
+          if [ "$pinned" = "$upstream" ]; then
+            echo "Pinned digest is already upstream's latest."
+            echo "moved=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Upstream moved: ${pinned} -> ${upstream}"
+            echo "moved=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/login-action@v4
+        if: steps.digest.outputs.moved == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan published image
+        if: steps.digest.outputs.moved == 'true'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ghcr.io/${{ github.repository }}:latest
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: json
+          output: published.json
+
+      - name: Scan upstream base image
+        if: steps.digest.outputs.moved == 'true'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: cgr.dev/chainguard/node@${{ steps.digest.outputs.upstream }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: json
+          output: upstream.json
+
+      - name: Decide whether to refresh
+        id: decide
+        if: steps.digest.outputs.moved == 'true'
+        run: |
+          count='[.Results[]?.Vulnerabilities[]?] | length'
+          published=$(jq "$count" published.json)
+          upstream=$(jq "$count" upstream.json)
+          echo "Fixable HIGH/CRITICAL: published image=${published}, new base=${upstream}"
+          if [ "$published" -gt 0 ] && [ "$upstream" -eq 0 ]; then
+            echo "refresh=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "refresh=false" >> "$GITHUB_OUTPUT"
+          fi
+          old_node=$(docker run --rm "cgr.dev/chainguard/node@${{ steps.digest.outputs.pinned }}" --version)
+          new_node=$(docker run --rm "cgr.dev/chainguard/node@${{ steps.digest.outputs.upstream }}" --version)
+          echo "Node: ${old_node} -> ${new_node}"
+          echo "old_node=${old_node}" >> "$GITHUB_OUTPUT"
+          echo "new_node=${new_node}" >> "$GITHUB_OUTPUT"
+          if [ "${old_node%%.*}" = "${new_node%%.*}" ]; then
+            echo "same_major=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "same_major=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit new digest and dispatch CI
+        if: steps.decide.outputs.refresh == 'true' && steps.decide.outputs.same_major == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PINNED: ${{ steps.digest.outputs.pinned }}
+          UPSTREAM: ${{ steps.digest.outputs.upstream }}
+        run: |
+          sed -i "s/${PINNED}/${UPSTREAM}/" Dockerfile
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore: refresh Chainguard node base image digest" \
+            -m "Published image had fixable HIGH/CRITICAL CVEs that ${UPSTREAM} clears (${{ steps.decide.outputs.new_node }})."
+          git pull --rebase origin main
+          git push origin HEAD:main
+          # A GITHUB_TOKEN push doesn't trigger ci.yml's `push` event, so
+          # dispatch it explicitly to run test -> scan -> publish.
+          gh workflow run ci.yml --ref main
+
+      - name: Open issue for Node major change
+        if: steps.decide.outputs.refresh == 'true' && steps.decide.outputs.same_major == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OLD_NODE: ${{ steps.decide.outputs.old_node }}
+          NEW_NODE: ${{ steps.decide.outputs.new_node }}
+          UPSTREAM: ${{ steps.digest.outputs.upstream }}
+        run: |
+          title="Base image refresh needs review: Node ${OLD_NODE%%.*} -> ${NEW_NODE%%.*}"
+          if [ -n "$(gh issue list --state open --search "in:title \"${title}\"" --json number --jq '.[].number')" ]; then
+            echo "Issue already open."
+            exit 0
+          fi
+          gh issue create --title "$title" --body "The published image has fixable HIGH/CRITICAL CVEs that Chainguard's latest node digest clears, but that digest moves Node from ${OLD_NODE} to ${NEW_NODE}, so it wasn't applied automatically.
+
+          To apply it, update the \`FROM cgr.dev/chainguard/node:latest@...\` line in \`Dockerfile\` to:
+
+          \`\`\`
+          ${UPSTREAM}
+          \`\`\`"

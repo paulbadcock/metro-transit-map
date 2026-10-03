@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Lets base-image-refresh.yml kick off a full run (test -> scan -> publish)
+  # after it pushes a digest bump: pushes made with GITHUB_TOKEN don't trigger
+  # `push` workflows, but workflow_dispatch is exempt from that rule.
+  workflow_dispatch:
 
 jobs:
   test:
@@ -36,6 +40,20 @@ jobs:
         with:
           context: .
           push: false
+          load: true
+          tags: metro-transit-map:ci
+
+      # Fails the build on HIGH/CRITICAL CVEs that already have a fix
+      # available -- i.e. ones a base-image digest bump or dependency update
+      # can actually clear. Pinned by commit SHA rather than tag since
+      # trivy-action's tags were hijacked in a 2026 supply-chain attack.
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: metro-transit-map:ci
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
 
   # Builds the same image again (build-push-action doesn't support exporting
   # a `push: false` build to reuse here) and pushes it to GHCR, but only for
@@ -51,7 +69,8 @@ jobs:
   publish:
     needs: [test, docker-build]
     if: >
-      github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/main' &&
       !contains(github.event.head_commit.message, 'chore: bump version')
     runs-on: ubuntu-latest
     permissions:
