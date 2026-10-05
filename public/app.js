@@ -98,9 +98,46 @@ const map = L.map("map", {
 // order: leaflet, maplibre-gl, then the bridge). Attribution is handled
 // automatically by the bridge -- it reads it straight from the style's
 // resolved tile source once the underlying MapLibre map fires "load".
-L.maplibreGL({
-  style: "https://tiles.openfreemap.org/styles/liberty",
-}).addTo(map);
+function createBasemapLayer() {
+  return L.maplibreGL({
+    style: "https://tiles.openfreemap.org/styles/liberty",
+  }).addTo(map);
+}
+
+// Unlike Leaflet's old raster tiles, a vector basemap depends on a live
+// WebGL context -- and Safari on macOS loses that context far more readily
+// than Chromium (GPU/memory pressure, backgrounding the tab), leaving the
+// canvas permanently blank with nothing retrying. MapLibre listens for the
+// browser's own "webglcontextrestored" and usually recovers on its own;
+// this only steps in when that doesn't happen within a few seconds, by
+// tearing down and recreating the layer (and its underlying
+// maplibre-gl.Map) from scratch via layer.remove()/createBasemapLayer()
+// rather than trying to resurrect the dead one in place.
+function watchForLostContext(layer) {
+  const canvas = layer.getCanvas();
+  let restoreTimer = null;
+
+  canvas.addEventListener("webglcontextlost", (e) => {
+    // Without this, the browser treats the loss as permanent and never
+    // fires webglcontextrestored at all.
+    e.preventDefault();
+    console.warn("[BusTracker] Basemap WebGL context lost, waiting for the browser to restore it...");
+    restoreTimer = setTimeout(() => {
+      console.warn("[BusTracker] WebGL context didn't restore in time -- recreating the basemap layer.");
+      layer.remove();
+      basemapLayer = createBasemapLayer();
+      watchForLostContext(basemapLayer);
+    }, 5000);
+  });
+
+  canvas.addEventListener("webglcontextrestored", () => {
+    clearTimeout(restoreTimer);
+    restoreTimer = null;
+  });
+}
+
+let basemapLayer = createBasemapLayer();
+watchForLostContext(basemapLayer);
 
 // Leaflet fires the same movestart/zoomstart events whether a pan/zoom came
 // from the rider's own hands or from our own fitBounds()/setView() calls --
