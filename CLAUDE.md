@@ -17,7 +17,7 @@ Set `GTFS_DIR` to point at a directory of GTFS static files (e.g. `GTFS_DIR=$(pw
 
 `test/gtfs-pipeline.test.js` exercises this fixture end to end — parsing the files via `loadGtfsData()` and hitting the real API routes — as a complement to `test/routes.test.js`, which seeds `gtfsData`'s Maps directly and so never touches the file-parsing pipeline itself.
 
-On first start (or when GTFS data is >24h old), `server.js` downloads `google_transit.zip` from Halifax Transit and extracts five files into `data/gtfs/`. Subsequent starts skip the download.
+On first start (or when GTFS data is >1 week old), `server.js` downloads `google_transit.zip` from Halifax Transit and extracts five files into `data/gtfs/`. While the server keeps running, it also checks hourly (`refreshGtfsDataIfDue()` in `server.js`) whether a re-download is due — either because the data has crossed that 1-week age, or because it's the 6am-Halifax-time hour on a Monday (Halifax Transit's own schedule changes typically take effect then). The actual trigger decision is the pure `shouldRefreshGtfsData()` in `lib/gtfs-utils.js`, unit tested in `test/gtfs-utils.test.js`. Skipped entirely when `GTFS_DIR` is set, since that mode hands the server caller-managed data it shouldn't touch.
 
 CI (`.github/workflows/ci.yml`) runs lint, tests, `npm audit --audit-level=high`, and a Docker build check on every push/PR to `main`.
 
@@ -87,7 +87,7 @@ Security headers are set via `helmet`, including a CSP allow-listing this app's 
 
 **Pure GTFS logic lives in `lib/gtfs-utils.js`** (CSV parsing, canonical-shape/trip selection for `/api/route-stops`, calendar-exception handling for `/api/service-status`), separated from `server.js` specifically so it can be unit tested — `server.js` has startup side effects (network download + `app.listen`) that make it unsafe to import directly in a test file. Tests are in `test/`.
 
-**Static GTFS loading** (`loadGtfsData`): At startup, parses `routes.txt`, `stops.txt`, `trips.txt`, `stop_times.txt`, and `shapes.txt` into `gtfsData` Maps/Sets in memory. Only stop_times and shapes belonging to route trips are retained, keeping memory use low. GTFS data is refreshed from source if the `.downloaded` timestamp file in `data/gtfs/` is older than 24 hours.
+**Static GTFS loading** (`loadGtfsData`): Parses `routes.txt`, `stops.txt`, `trips.txt`, `stop_times.txt`, and `shapes.txt` into `gtfsData` Maps/Sets in memory, clearing them first so a live refresh (see above) doesn't leak entries for routes/stops/trips/shapes removed from the new data. Called once at startup, and again by `refreshGtfsDataIfDue()` whenever a scheduled refresh runs.
 
 **Frontend (`public/`)** — No framework, no build step. Leaflet is loaded from CDN (`unpkg.com`). `app.js` is a single module-style script with:
 - Global `state` object holding vehicles, stops, trip updates, schedule, and Leaflet marker references

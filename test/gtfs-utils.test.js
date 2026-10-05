@@ -8,6 +8,7 @@ import {
   pickBestTrip,
   computeActiveServiceIds,
   computeStopDirections,
+  shouldRefreshGtfsData,
 } from '../lib/gtfs-utils.js';
 
 describe('splitCsvLine', () => {
@@ -205,5 +206,36 @@ describe('computeActiveServiceIds', () => {
     ]);
     const active = computeActiveServiceIds(calendars, calendarDates, '20260727', 'monday');
     assert.equal(active.has('weekday'), false);
+  });
+});
+
+describe('shouldRefreshGtfsData', () => {
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+  const ONE_WEEK_MS = 7 * ONE_DAY_MS;
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+  const mondaySixAm = new Date(2026, 0, 5, 6, 30); // confirmed Monday above
+  const mondaySevenAm = new Date(2026, 0, 5, 7, 0);
+  const tuesdaySixAm = new Date(2026, 0, 6, 6, 30);
+
+  test('does not refresh fresh data on an ordinary day', () => {
+    assert.equal(shouldRefreshGtfsData(ONE_DAY_MS, tuesdaySixAm, ONE_WEEK_MS, ONE_HOUR_MS), false);
+  });
+
+  test('refreshes once data exceeds the max age, regardless of day', () => {
+    assert.equal(shouldRefreshGtfsData(ONE_WEEK_MS + 1, tuesdaySixAm, ONE_WEEK_MS, ONE_HOUR_MS), true);
+  });
+
+  test('forces a refresh during the Monday 6am window even if data is fresh', () => {
+    assert.equal(shouldRefreshGtfsData(2 * ONE_HOUR_MS, mondaySixAm, ONE_WEEK_MS, ONE_HOUR_MS), true);
+  });
+
+  test('does not force a refresh on Monday outside the 6am hour', () => {
+    assert.equal(shouldRefreshGtfsData(2 * ONE_HOUR_MS, mondaySevenAm, ONE_WEEK_MS, ONE_HOUR_MS), false);
+  });
+
+  test('does not re-trigger the Monday refresh right after it just ran', () => {
+    // age (30 min) is under checkIntervalMs (1h) -- this is the previous
+    // check's own refresh having just reset the age, not a new window.
+    assert.equal(shouldRefreshGtfsData(30 * 60 * 1000, mondaySixAm, ONE_WEEK_MS, ONE_HOUR_MS), false);
   });
 });

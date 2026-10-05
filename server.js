@@ -14,6 +14,7 @@ import {
   pickBestTrip,
   computeActiveServiceIds,
   computeStopDirections,
+  shouldRefreshGtfsData,
 } from './lib/gtfs-utils.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -55,8 +56,20 @@ const GTFS_STATIC_URL = 'https://gtfs.halifax.ca/static/google_transit.zip';
 // Overridable so tests/local dev can point at a checked-in fixture set
 // (test/fixtures/gtfs/) instead of the real download -- see startup() below,
 // which treats an explicit GTFS_DIR as "the caller manages this data" and
-// skips the freshness check and network fetch entirely.
+// skips the freshness check, network fetch, and scheduled refresh entirely.
 const GTFS_DIR = process.env.GTFS_DIR || join(__dirname, 'data', 'gtfs');
+
+// How stale static GTFS data can get before a long-running server
+// refreshes it on its own -- Halifax Transit's schedule changes land
+// roughly weekly, so a week is fresh enough without hammering their
+// server. See shouldRefreshGtfsData() (lib/gtfs-utils.js) for the second,
+// Monday-6am trigger this works alongside.
+const GTFS_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+// How often the running server checks whether a refresh is due. Startup
+// only downloads once, so this timer is what actually keeps a
+// long-lived (e.g. Docker) process from serving stale shapes/schedules
+// indefinitely between restarts.
+const GTFS_REFRESH_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
 const VEHICLE_POSITIONS_URL = 'https://gtfs.halifax.ca/realtime/Vehicle/VehiclePositions.pb';
 const TRIP_UPDATES_URL = 'https://gtfs.halifax.ca/realtime/TripUpdate/TripUpdates.pb';
@@ -114,17 +127,61 @@ async function downloadGtfs() {
   console.log('GTFS static data downloaded.');
 }
 
-function isGtfsFresh() {
+function gtfsDataAgeMs() {
   const tsFile = join(GTFS_DIR, '.downloaded');
-  if (!existsSync(tsFile)) return false;
+  if (!existsSync(tsFile)) return Infinity;
+  const ts = parseInt(readFileSync(tsFile, 'utf8'));
+  return Date.now() - ts;
+}
+
+function isGtfsFresh() {
   // Re-download if calendar files are absent (one-time migration for existing caches)
   const hasCalendar = existsSync(join(GTFS_DIR, 'calendar.txt')) || existsSync(join(GTFS_DIR, 'calendar_dates.txt'));
   if (!hasCalendar) return false;
-  const ts = parseInt(readFileSync(tsFile, 'utf8'));
-  return Date.now() - ts < 24 * 60 * 60 * 1000;
+  return gtfsDataAgeMs() < GTFS_MAX_AGE_MS;
+}
+
+let gtfsRefreshInFlight = false;
+
+// Re-downloads and reloads static GTFS data if shouldRefreshGtfsData() says
+// it's due. Called on a timer (see startup()) rather than being date-driven
+// itself, so a missed check (e.g. the process was down over a Monday
+// morning) is caught by the age-based trigger the next time this runs.
+async function refreshGtfsDataIfDue() {
+  if (gtfsRefreshInFlight) return;
+
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Halifax' }));
+  const age = gtfsDataAgeMs();
+  if (!shouldRefreshGtfsData(age, now, GTFS_MAX_AGE_MS, GTFS_REFRESH_CHECK_INTERVAL_MS)) return;
+
+  gtfsRefreshInFlight = true;
+  try {
+    console.log(`Scheduled refresh: static GTFS data is ${Math.round(age / 3600000)}h old, re-downloading...`);
+    await downloadGtfs();
+    loadGtfsData();
+    console.log('Scheduled GTFS refresh complete.');
+  } catch (err) {
+    console.error('Scheduled GTFS refresh failed, will retry at the next check:', err.message);
+  } finally {
+    gtfsRefreshInFlight = false;
+  }
 }
 
 function loadGtfsData() {
+  // Cleared up front (rather than just overwritten below) so a live
+  // refresh drops entries for routes/stops/trips/shapes that no longer
+  // exist in the new data, instead of leaking stale ones forever.
+  // routeInfoCache in particular must be invalidated here -- it's
+  // otherwise never recomputed once a route_id has been looked up once.
+  gtfsData.routes.clear();
+  gtfsData.stops.clear();
+  gtfsData.trips.clear();
+  gtfsData.stopTimesByTrip.clear();
+  gtfsData.shapes.clear();
+  gtfsData.calendars.clear();
+  gtfsData.calendarDates.clear();
+  gtfsData.routeInfoCache.clear();
+
   // Routes
   const routes = parseCsv(readFileSync(join(GTFS_DIR, 'routes.txt'), 'utf8'));
   for (const r of routes) {
@@ -670,6 +727,17 @@ async function startup() {
     console.log('GTFS static data is fresh, skipping download.');
   }
   loadGtfsData();
+
+  // Keeps a long-running process from serving stale shapes/schedules
+  // indefinitely -- the check above only runs once, at startup. Skipped
+  // under GTFS_DIR: that mode is for a caller-managed fixture/mock
+  // directory (local dev, tests), which should never be auto-refreshed.
+  // .unref() so this timer alone can't keep the process alive.
+  if (!process.env.GTFS_DIR) {
+    setInterval(() => {
+      refreshGtfsDataIfDue().catch(err => console.error('Unexpected error in scheduled GTFS refresh:', err));
+    }, GTFS_REFRESH_CHECK_INTERVAL_MS).unref();
+  }
 
   const server = app.listen(PORT, () => {
     console.log(`Bus Tracker running at http://localhost:${PORT}`);
