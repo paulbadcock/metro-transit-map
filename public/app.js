@@ -107,17 +107,85 @@ const map = L.map("map", {
 // fetch fails, fall back to letting MapLibre load the URL itself: same map,
 // just the noisy console.
 const BASEMAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
-fetch(BASEMAP_STYLE_URL)
-  .then((res) => {
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
-  })
-  .then((style) => BasemapStyle.guardNullNumbers(style))
-  .catch((err) => {
-    console.warn("Basemap style patch skipped:", err);
-    return BASEMAP_STYLE_URL;
-  })
-  .then((style) => L.maplibreGL({ style }).addTo(map));
+let basemapStylePromise = null;
+
+// Fetched and patched once, then reused if the layer ever has to be rebuilt
+// (see watchForLostContext below). Resolves to the patched style object, or
+// to the plain URL if the fetch/patch failed.
+function loadBasemapStyle() {
+  basemapStylePromise ??= fetch(BASEMAP_STYLE_URL)
+    .then((res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    })
+    .then((style) => BasemapStyle.guardNullNumbers(style))
+    .catch((err) => {
+      console.warn("Basemap style patch skipped:", err);
+      return BASEMAP_STYLE_URL;
+    });
+  return basemapStylePromise;
+}
+
+let basemapLayer = null;
+let basemapRebuilds = 0;
+// A context that keeps dying the moment it's recreated (a device or browser
+// that can't sustain WebGL) would otherwise rebuild forever: burning
+// battery on a loop that can never succeed. After this many rebuilds in a
+// row the basemap is left as-is; the counter resets once a rebuilt layer has
+// stayed alive for BASEMAP_STABLE_MS, so an occasional, well-spaced loss
+// (a backgrounded tab, say) is still recovered every time.
+const MAX_BASEMAP_REBUILDS = 3;
+const BASEMAP_STABLE_MS = 60000;
+
+async function addBasemapLayer() {
+  const style = await loadBasemapStyle();
+  // structuredClone: MapLibre may mutate what it's handed, and the same
+  // patched style is reused if this layer is rebuilt later.
+  const layer = L.maplibreGL({ style: typeof style === "string" ? style : structuredClone(style) }).addTo(map);
+  basemapLayer = layer;
+  watchForLostContext(layer);
+  setTimeout(() => {
+    if (basemapLayer === layer) basemapRebuilds = 0;
+  }, BASEMAP_STABLE_MS);
+}
+
+// Unlike Leaflet's old raster tiles, a vector basemap depends on a live
+// WebGL context -- and Safari on macOS loses that context far more readily
+// than Chromium (GPU/memory pressure, backgrounding the tab), leaving the
+// canvas permanently blank with nothing retrying. MapLibre listens for the
+// browser's own "webglcontextrestored" and usually recovers on its own;
+// this only steps in when that doesn't happen within a few seconds, by
+// tearing down and recreating the layer (and its underlying
+// maplibre-gl.Map) from scratch via layer.remove()/addBasemapLayer()
+// rather than trying to resurrect the dead one in place.
+function watchForLostContext(layer) {
+  const canvas = layer.getCanvas();
+  let restoreTimer = null;
+
+  canvas.addEventListener("webglcontextlost", (e) => {
+    // Without this, the browser treats the loss as permanent and never
+    // fires webglcontextrestored at all.
+    e.preventDefault();
+    console.warn("[BusTracker] Basemap WebGL context lost, waiting for the browser to restore it...");
+    restoreTimer = setTimeout(() => {
+      if (basemapRebuilds >= MAX_BASEMAP_REBUILDS) {
+        console.warn("[BusTracker] WebGL context keeps being lost -- giving up on rebuilding the basemap.");
+        return;
+      }
+      basemapRebuilds++;
+      console.warn(`[BusTracker] WebGL context didn't restore in time -- recreating the basemap layer (${basemapRebuilds}/${MAX_BASEMAP_REBUILDS}).`);
+      layer.remove();
+      addBasemapLayer();
+    }, 5000);
+  });
+
+  canvas.addEventListener("webglcontextrestored", () => {
+    clearTimeout(restoreTimer);
+    restoreTimer = null;
+  });
+}
+
+addBasemapLayer();
 
 // Leaflet fires the same movestart/zoomstart events whether a pan/zoom came
 // from the rider's own hands or from our own fitBounds()/setView() calls --
