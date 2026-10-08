@@ -98,9 +98,26 @@ const map = L.map("map", {
 // order: leaflet, maplibre-gl, then the bridge). Attribution is handled
 // automatically by the bridge -- it reads it straight from the style's
 // resolved tile source once the underlying MapLibre map fires "load".
-L.maplibreGL({
-  style: "https://tiles.openfreemap.org/styles/liberty",
-}).addTo(map);
+//
+// The style JSON is fetched here rather than handed to MapLibre as a URL so
+// BasemapStyle.guardNullNumbers() (basemap-style.js) can patch its
+// number comparisons on possibly-missing tile properties first -- otherwise
+// MapLibre's tile worker logs "Expected value to be of type number, but
+// found null instead." for every unnumbered street on every pan/zoom. If the
+// fetch fails, fall back to letting MapLibre load the URL itself: same map,
+// just the noisy console.
+const BASEMAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
+fetch(BASEMAP_STYLE_URL)
+  .then((res) => {
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  })
+  .then((style) => BasemapStyle.guardNullNumbers(style))
+  .catch((err) => {
+    console.warn("Basemap style patch skipped:", err);
+    return BASEMAP_STYLE_URL;
+  })
+  .then((style) => L.maplibreGL({ style }).addTo(map));
 
 // Leaflet fires the same movestart/zoomstart events whether a pan/zoom came
 // from the rider's own hands or from our own fitBounds()/setView() calls --
@@ -941,6 +958,10 @@ function toggleTraffic() {
     // map's max zoom past where OSM has tiles, leaving a blank basemap.
     maxZoom: 19,
     opacity: 0.65,
+    // Keeps the overlay above the basemap whatever order they're added in:
+    // the basemap is added once its style fetch resolves, which can land
+    // after an auto-enabled overlay, and would otherwise stack on top of it.
+    zIndex: 2,
   }).addTo(map);
   btn.classList.add("active");
 }
