@@ -61,5 +61,63 @@
       .slice(0, limit);
   }
 
-  return { computeNextBuses, buildDelayMap };
+  // Returns the current delay (minutes) for a trip that's confirmed
+  // running (caller guarantees that -- see activeTripIdSet() in app.js),
+  // picking the stop-time update for the nearest stop still ahead rather
+  // than just the lowest stop_sequence in the feed. The two aren't the
+  // same thing: picking by sequence number alone assumes the feed only
+  // ever lists a trip's *remaining* stops (as the GTFS-RT spec
+  // recommends), but Halifax's producer doesn't reliably prune a trip's
+  // early stop-time updates once the vehicle passes them (the same feed's
+  // other quirk -- forecasting into a not-yet-started next trip -- is
+  // handled separately in computeNextBuses above). Left unfiltered, the
+  // lowest sequence number can get stuck forever on the first stop's
+  // original (often "on time") delay even as the bus falls further behind
+  // at every stop since, which is exactly backwards from what "current
+  // delay" should mean.
+  function getTripDelayMinutes(tripId, allTripUpdates, nowMs) {
+    if (!tripId) return null;
+    const forTrip = allTripUpdates.filter((u) => u.trip_id === tripId);
+    if (forTrip.length === 0) return null;
+
+    const eventTimeMs = (u) => {
+      const t = u.departure_time ?? u.arrival_time;
+      return t != null ? t * 1000 : null;
+    };
+
+    // An entry with no predicted time at all (delay-only update) is kept
+    // rather than excluded -- there's no signal either way on whether its
+    // stop is still ahead, so it gets the benefit of the doubt.
+    const upcoming = forTrip.filter((u) => {
+      const t = eventTimeMs(u);
+      return t == null || t >= nowMs;
+    });
+
+    const pickLowestSequence = (list) => {
+      let best = null;
+      for (const u of list) {
+        if (best === null || (u.stop_sequence ?? Infinity) < (best.stop_sequence ?? Infinity)) best = u;
+      }
+      return best;
+    };
+
+    let best = pickLowestSequence(upcoming);
+    if (!best) {
+      // Nothing is still ahead by time -- every entry's predicted time has
+      // already passed. Falling back to the lowest-sequence entry here
+      // would just reintroduce the bug above, so use whichever entry's
+      // predicted time is most recent instead, as the closest available
+      // signal to "now".
+      for (const u of forTrip) {
+        const t = eventTimeMs(u);
+        if (best === null || (t ?? -Infinity) > (eventTimeMs(best) ?? -Infinity)) best = u;
+      }
+    }
+
+    if (!best) return null;
+    const delaySeconds = best.departure_delay ?? best.arrival_delay;
+    return delaySeconds != null ? Math.round(delaySeconds / 60) : null;
+  }
+
+  return { computeNextBuses, buildDelayMap, getTripDelayMinutes };
 });

@@ -197,20 +197,11 @@ function makeBusIcon(bearing, timestamp, delayMin, directionId, isSelected = fal
   });
 }
 
-// Returns the current delay (minutes) for a trip from the most recently
-// arriving stop-time update, or null if no real-time data is available yet.
+// Returns the current delay (minutes) for a trip, or null if no real-time
+// data is available yet -- see NextBuses.getTripDelayMinutes for why this
+// isn't simply "the lowest stop_sequence in the feed".
 function getTripDelayMinutes(tripId) {
-  if (!tripId) return null;
-  let best = null;
-  for (const u of state.allTripUpdates) {
-    if (u.trip_id !== tripId) continue;
-    if (best === null || (u.stop_sequence ?? Infinity) < (best.stop_sequence ?? Infinity)) {
-      best = u;
-    }
-  }
-  if (!best) return null;
-  const delaySeconds = best.departure_delay ?? best.arrival_delay;
-  return delaySeconds != null ? Math.round(delaySeconds / 60) : null;
+  return NextBuses.getTripDelayMinutes(tripId, state.allTripUpdates, Date.now());
 }
 
 // trip_ids a real vehicle is currently out running, per the latest vehicle
