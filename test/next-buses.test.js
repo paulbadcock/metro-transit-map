@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 // next-buses.js is a plain classic script in the browser (window.NextBuses),
 // not an ES module -- createRequire loads its CommonJS export path instead.
 const require = createRequire(import.meta.url);
-const { computeNextBuses, buildDelayMap } = require('../public/next-buses.js');
+const { computeNextBuses, buildDelayMap, getTripDelayMinutes } = require('../public/next-buses.js');
 
 describe('buildDelayMap', () => {
   test('keys updates by trip_id_stop_id', () => {
@@ -99,5 +99,64 @@ describe('computeNextBuses', () => {
     assert.equal(result.length, 2);
     assert.equal(result[0].trip_id, 't2');
     assert.equal(result[1].trip_id, 't3');
+  });
+});
+
+describe('getTripDelayMinutes', () => {
+  const nowSec = 1_700_000_000;
+  const nowMs = nowSec * 1000;
+
+  test('returns null for a falsy trip_id', () => {
+    assert.equal(getTripDelayMinutes(null, [], nowMs), null);
+  });
+
+  test('returns null when the feed has nothing for this trip', () => {
+    const updates = [{ trip_id: 'other', stop_sequence: 1, departure_time: nowSec, departure_delay: 0 }];
+    assert.equal(getTripDelayMinutes('t1', updates, nowMs), null);
+  });
+
+  // The bug this exists to fix: Halifax's feed doesn't reliably prune a
+  // trip's early stop-time updates once the bus passes them, so the first
+  // stop's long-past, originally-on-time reading would otherwise always
+  // beat a later stop's much larger, current delay on stop_sequence alone.
+  test('ignores a stale early-stop reading once its predicted time has passed', () => {
+    const updates = [
+      { trip_id: 't1', stop_sequence: 1, departure_time: nowSec - 1800, departure_delay: 0 },
+      { trip_id: 't1', stop_sequence: 5, departure_time: nowSec + 300, departure_delay: 1200 },
+    ];
+    assert.equal(getTripDelayMinutes('t1', updates, nowMs), 20);
+  });
+
+  test('picks the nearest still-upcoming stop among several', () => {
+    const updates = [
+      { trip_id: 't1', stop_sequence: 3, departure_time: nowSec + 120, departure_delay: 120 },
+      { trip_id: 't1', stop_sequence: 7, departure_time: nowSec + 600, departure_delay: 600 },
+    ];
+    assert.equal(getTripDelayMinutes('t1', updates, nowMs), 2);
+  });
+
+  test('falls back to stop_sequence when the feed gives no predicted times at all', () => {
+    // A pure delay-only feed (no arrival_time/departure_time anywhere)
+    // carries no signal about which entries are stale, so this case can't
+    // be distinguished from a spec-compliant remaining-stops-only feed --
+    // behavior is unchanged from picking the lowest sequence number.
+    const updates = [
+      { trip_id: 't1', stop_sequence: 1, departure_delay: 0 },
+      { trip_id: 't1', stop_sequence: 5, departure_delay: 1200 },
+    ];
+    assert.equal(getTripDelayMinutes('t1', updates, nowMs), 0);
+  });
+
+  test('when every reading is in the past, uses the most recent one rather than the lowest sequence', () => {
+    const updates = [
+      { trip_id: 't1', stop_sequence: 1, departure_time: nowSec - 1000, departure_delay: 0 },
+      { trip_id: 't1', stop_sequence: 5, departure_time: nowSec - 100, departure_delay: 600 },
+    ];
+    assert.equal(getTripDelayMinutes('t1', updates, nowMs), 10);
+  });
+
+  test('falls back to arrival_time/arrival_delay when departure fields are absent', () => {
+    const updates = [{ trip_id: 't1', stop_sequence: 1, arrival_time: nowSec + 60, arrival_delay: 180 }];
+    assert.equal(getTripDelayMinutes('t1', updates, nowMs), 3);
   });
 });
