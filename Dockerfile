@@ -26,7 +26,7 @@ RUN mkdir -p /app/data/gtfs
 # odd-numbered (non-LTS) releases included, so review those bumps rather than
 # auto-merging. Avoid :latest-slim: it stopped being rebuilt on the free tier
 # (stuck on Node 25 as of 2026-09).
-FROM cgr.dev/chainguard/node:latest@sha256:5d749aee9d2711dd89d757de7bfe2674a9f924a119f2b354f2227e2e4711ea9b AS runtime
+FROM cgr.dev/chainguard/node:latest@sha256:88c4f6e6941bdd4fb9039d98ad05384e1bfe5693dd31ccc8eb2f0c8522bdb40e AS runtime
 
 WORKDIR /app
 
