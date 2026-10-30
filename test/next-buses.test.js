@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 // next-buses.js is a plain classic script in the browser (window.NextBuses),
 // not an ES module -- createRequire loads its CommonJS export path instead.
 const require = createRequire(import.meta.url);
-const { computeNextBuses, buildDelayMap, getTripDelayMinutes, pickBusAhead } = require('../public/next-buses.js');
+const { computeNextBuses, buildDelayMap, getTripDelayMinutes, pickBusAhead, overrideTripDelay } = require('../public/next-buses.js');
 
 describe('buildDelayMap', () => {
   test('keys updates by trip_id_stop_id', () => {
@@ -203,5 +203,37 @@ describe('pickBusAhead', () => {
   test('returns null when the selected bus is missing or has no position', () => {
     assert.equal(pickBusAhead([{ id: 'a', direction_id: 0, idx: 1 }], 'nope', idxOf), null);
     assert.equal(pickBusAhead([{ id: 'sel', direction_id: 0 }, { id: 'a', direction_id: 0, idx: 5 }], 'sel', idxOf), null);
+  });
+});
+
+describe('overrideTripDelay', () => {
+  // depMin 08:46 = 526; the feed's own stop prediction said +4, the bus
+  // itself is carrying +7.
+  const entries = [
+    { trip_id: 'mine', depMin: 526, delayMin: 4, estimatedMin: 530, minutesAway: 30, started: true },
+    { trip_id: 'next', depMin: 557, delayMin: 0, estimatedMin: 557, minutesAway: 57, started: false },
+  ];
+
+  test("re-times the selected bus's row to its own delay", () => {
+    const [mine] = overrideTripDelay(entries, 'mine', 7, 500);
+    assert.equal(mine.trip_id, 'mine');
+    assert.equal(mine.delayMin, 7);
+    assert.equal(mine.estimatedMin, 533);
+    assert.equal(mine.minutesAway, 33);
+  });
+
+  test('leaves every other row untouched', () => {
+    const result = overrideTripDelay(entries, 'mine', 7, 500);
+    assert.deepEqual(result[1], entries[1]);
+  });
+
+  test('is a no-op without a trip or a live delay', () => {
+    assert.equal(overrideTripDelay(entries, null, 7, 500), entries);
+    assert.equal(overrideTripDelay(entries, 'mine', null, 500), entries);
+  });
+
+  test('re-sorts when the new delay changes the order', () => {
+    const result = overrideTripDelay(entries, 'mine', 60, 500);
+    assert.deepEqual(result.map((e) => e.trip_id), ['next', 'mine']);
   });
 });

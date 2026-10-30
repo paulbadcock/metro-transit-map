@@ -144,5 +144,22 @@
     return bestId;
   }
 
-  return { computeNextBuses, buildDelayMap, getTripDelayMinutes, pickBusAhead };
+  // Re-times one trip's row in a computeNextBuses result to a given delay.
+  // The feed's per-stop prediction for the selected bus can disagree with
+  // the delay the bus itself is carrying right now (its badge) -- and that
+  // feed has proven unreliable per stop -- so the row for the bus a rider
+  // is actually watching uses the same number as its badge instead of a
+  // second, conflicting one. No-op when there's no live delay to use.
+  function overrideTripDelay(entries, tripId, delayMin, nowMin) {
+    if (!tripId || delayMin == null) return entries;
+    return entries
+      .map((e) => {
+        if (e.trip_id !== tripId) return e;
+        const estimatedMin = e.depMin + delayMin;
+        return { ...e, delayMin, estimatedMin, minutesAway: estimatedMin - nowMin, started: true };
+      })
+      .sort((a, b) => a.minutesAway - b.minutesAway);
+  }
+
+  return { computeNextBuses, buildDelayMap, getTripDelayMinutes, pickBusAhead, overrideTripDelay };
 });

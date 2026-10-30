@@ -873,7 +873,13 @@ function renderStopPopupContent(marker, stop, schedule) {
   // direction's trips too, diluting (or outright pushing out of the
   // 5-row limit) the very row the "your bus" tag is trying to highlight.
   const dirSchedule = schedule.filter((e) => e.direction_id === state.selectedTripDirectionId);
-  const upcoming = NextBuses.computeNextBuses(dirSchedule, stop.stop_id, state.allTripUpdates, activeTripIdSet(), nowMinutes(), 5);
+  const bus = state.vehicles.find((v) => v.id === state.selectedBusId);
+  const upcoming = NextBuses.overrideTripDelay(
+    NextBuses.computeNextBuses(dirSchedule, stop.stop_id, state.allTripUpdates, activeTripIdSet(), nowMinutes(), 5),
+    bus?.trip_id,
+    bus ? getTripDelayMinutes(bus.trip_id) : null,
+    nowMinutes(),
+  );
   const tripContext = computeStopTripContext(stop.stop_id, stop, schedule);
   marker.setPopupContent(buildStopPopup(stop.stop_name, stop.stop_id, upcoming, tripContext));
 }
