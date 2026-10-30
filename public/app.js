@@ -1750,11 +1750,30 @@ function alertSignature(alerts) {
   return alerts.map((a) => a.header).join("|");
 }
 
+// The route line and stop markers always come from the static GTFS data,
+// which has no notion of a detour -- so while a detour alert is active,
+// buses can appear off the drawn line and some drawn stops may not be served.
+// This map-side note says so, and (unlike the banner) deliberately ignores
+// the banner's dismissal: it's about how far the map can be trusted, not news.
+const detourNote = L.control({ position: "bottomleft" });
+detourNote.onAdd = () => {
+  const div = L.DomUtil.create("div", "detour-map-note");
+  div.textContent = "Detour in effect: the line shows the regular route, so buses may appear off it.";
+  return div;
+};
+
+function updateDetourNote() {
+  const active = state.alerts.some((a) => /detour/i.test(`${a.header} ${a.description}`));
+  if (active) detourNote.addTo(map);
+  else detourNote.remove();
+}
+
 async function checkAlerts() {
   try {
     state.alerts = await apiFetch(
       `/api/alerts?route_id=${encodeURIComponent(currentRouteId())}`,
     );
+    updateDetourNote();
     const banner = document.getElementById("alert-banner");
     const list = document.getElementById("alert-banner-list");
     if (state.alerts.length === 0) {
