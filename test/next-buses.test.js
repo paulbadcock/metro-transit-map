@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 // next-buses.js is a plain classic script in the browser (window.NextBuses),
 // not an ES module -- createRequire loads its CommonJS export path instead.
 const require = createRequire(import.meta.url);
-const { computeNextBuses, buildDelayMap, getTripDelayMinutes } = require('../public/next-buses.js');
+const { computeNextBuses, buildDelayMap, getTripDelayMinutes, pickBusAhead } = require('../public/next-buses.js');
 
 describe('buildDelayMap', () => {
   test('keys updates by trip_id_stop_id', () => {
@@ -158,5 +158,50 @@ describe('getTripDelayMinutes', () => {
   test('falls back to arrival_time/arrival_delay when departure fields are absent', () => {
     const updates = [{ trip_id: 't1', stop_sequence: 1, arrival_time: nowSec + 60, arrival_delay: 180 }];
     assert.equal(getTripDelayMinutes('t1', updates, nowMs), 3);
+  });
+});
+
+describe('pickBusAhead', () => {
+  // idx stands in for "how far along the route" -- the caller supplies the
+  // real shape-index lookup; here each vehicle just carries its own.
+  const idxOf = (v) => v.idx ?? null;
+
+  test('returns the nearest bus further along the same direction', () => {
+    const vehicles = [
+      { id: 'sel', direction_id: 0, idx: 10 },
+      { id: 'far', direction_id: 0, idx: 90 },
+      { id: 'near', direction_id: 0, idx: 40 },
+    ];
+    assert.equal(pickBusAhead(vehicles, 'sel', idxOf), 'near');
+  });
+
+  test('ignores buses behind the selected one', () => {
+    const vehicles = [
+      { id: 'sel', direction_id: 0, idx: 50 },
+      { id: 'behind', direction_id: 0, idx: 20 },
+    ];
+    assert.equal(pickBusAhead(vehicles, 'sel', idxOf), null);
+  });
+
+  test('ignores buses running the opposite direction', () => {
+    const vehicles = [
+      { id: 'sel', direction_id: 0, idx: 10 },
+      { id: 'other-dir', direction_id: 1, idx: 40 },
+    ];
+    assert.equal(pickBusAhead(vehicles, 'sel', idxOf), null);
+  });
+
+  test('skips buses with no known position', () => {
+    const vehicles = [
+      { id: 'sel', direction_id: 0, idx: 10 },
+      { id: 'unknown', direction_id: 0 },
+      { id: 'ahead', direction_id: 0, idx: 30 },
+    ];
+    assert.equal(pickBusAhead(vehicles, 'sel', idxOf), 'ahead');
+  });
+
+  test('returns null when the selected bus is missing or has no position', () => {
+    assert.equal(pickBusAhead([{ id: 'a', direction_id: 0, idx: 1 }], 'nope', idxOf), null);
+    assert.equal(pickBusAhead([{ id: 'sel', direction_id: 0 }, { id: 'a', direction_id: 0, idx: 5 }], 'sel', idxOf), null);
   });
 });

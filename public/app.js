@@ -501,21 +501,34 @@ async function fetchRoutes() {
 }
 
 // ─── Map: Vehicles ────────────────────────────────────────────────────────────
-function isVehicleVisible(id) {
-  return state.selectedBusId == null || id === state.selectedBusId;
+// The bus just ahead of the selected one on the route, or null -- see
+// NextBuses.pickBusAhead. Position along the route is judged against the
+// selected bus's own direction's shape, the same way hasBusPassedStop does.
+function busAheadId() {
+  if (state.selectedBusId == null) return null;
+  const sel = state.vehicles.find((v) => v.id === state.selectedBusId);
+  const shape = sel && state.routeShapeByDirection.get(sel.direction_id ?? state.selectedTripDirectionId);
+  if (!shape || shape.length < 2) return null;
+  return NextBuses.pickBusAhead(state.vehicles, state.selectedBusId, (v) =>
+    v.lat && v.lon ? nearestShapeIndex(shape, v.lat, v.lon) : null,
+  );
 }
 
-// While a bus is selected, every other vehicle marker is hidden (not
-// removed from state -- just off the map) so the selected bus and its route
-// stand out without clutter from unrelated buses. Called both right after a
-// selection change and on every vehicle poll, since newly-appearing buses
-// need the same treatment as ones already on the map.
+// While a bus is selected, other vehicle markers are hidden (not removed
+// from state -- just off the map) so the selected bus and its route stand
+// out without clutter from unrelated buses. The one exception is the bus
+// immediately ahead on the route: how it's running is the best clue to how
+// the selected bus's trip is going, so it stays visible, dimmed. Called both
+// right after a selection change and on every vehicle poll, since
+// newly-appearing buses need the same treatment as ones already on the map.
 function applyVehicleVisibility() {
+  const aheadId = busAheadId();
   for (const [id, marker] of state.vehicleMarkers) {
-    const shouldShow = isVehicleVisible(id);
+    const shouldShow = state.selectedBusId == null || id === state.selectedBusId || id === aheadId;
     const isShown = map.hasLayer(marker);
     if (shouldShow && !isShown) marker.addTo(map);
     else if (!shouldShow && isShown) marker.remove();
+    marker.setOpacity(id === aheadId ? 0.6 : 1);
   }
 }
 
