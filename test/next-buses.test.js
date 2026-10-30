@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 // next-buses.js is a plain classic script in the browser (window.NextBuses),
 // not an ES module -- createRequire loads its CommonJS export path instead.
 const require = createRequire(import.meta.url);
-const { computeNextBuses, buildDelayMap, getTripDelayMinutes } = require('../public/next-buses.js');
+const { computeNextBuses, buildDelayMap, getTripDelayMinutes, pickBusAhead, overrideTripDelay } = require('../public/next-buses.js');
 
 describe('buildDelayMap', () => {
   test('keys updates by trip_id_stop_id', () => {
@@ -158,5 +158,82 @@ describe('getTripDelayMinutes', () => {
   test('falls back to arrival_time/arrival_delay when departure fields are absent', () => {
     const updates = [{ trip_id: 't1', stop_sequence: 1, arrival_time: nowSec + 60, arrival_delay: 180 }];
     assert.equal(getTripDelayMinutes('t1', updates, nowMs), 3);
+  });
+});
+
+describe('pickBusAhead', () => {
+  // idx stands in for "how far along the route" -- the caller supplies the
+  // real shape-index lookup; here each vehicle just carries its own.
+  const idxOf = (v) => v.idx ?? null;
+
+  test('returns the nearest bus further along the same direction', () => {
+    const vehicles = [
+      { id: 'sel', direction_id: 0, idx: 10 },
+      { id: 'far', direction_id: 0, idx: 90 },
+      { id: 'near', direction_id: 0, idx: 40 },
+    ];
+    assert.equal(pickBusAhead(vehicles, 'sel', idxOf), 'near');
+  });
+
+  test('ignores buses behind the selected one', () => {
+    const vehicles = [
+      { id: 'sel', direction_id: 0, idx: 50 },
+      { id: 'behind', direction_id: 0, idx: 20 },
+    ];
+    assert.equal(pickBusAhead(vehicles, 'sel', idxOf), null);
+  });
+
+  test('ignores buses running the opposite direction', () => {
+    const vehicles = [
+      { id: 'sel', direction_id: 0, idx: 10 },
+      { id: 'other-dir', direction_id: 1, idx: 40 },
+    ];
+    assert.equal(pickBusAhead(vehicles, 'sel', idxOf), null);
+  });
+
+  test('skips buses with no known position', () => {
+    const vehicles = [
+      { id: 'sel', direction_id: 0, idx: 10 },
+      { id: 'unknown', direction_id: 0 },
+      { id: 'ahead', direction_id: 0, idx: 30 },
+    ];
+    assert.equal(pickBusAhead(vehicles, 'sel', idxOf), 'ahead');
+  });
+
+  test('returns null when the selected bus is missing or has no position', () => {
+    assert.equal(pickBusAhead([{ id: 'a', direction_id: 0, idx: 1 }], 'nope', idxOf), null);
+    assert.equal(pickBusAhead([{ id: 'sel', direction_id: 0 }, { id: 'a', direction_id: 0, idx: 5 }], 'sel', idxOf), null);
+  });
+});
+
+describe('overrideTripDelay', () => {
+  // depMin 08:46 = 526; the feed's own stop prediction said +4, the bus
+  // itself is carrying +7.
+  const entries = [
+    { trip_id: 'mine', depMin: 526, delayMin: 4, estimatedMin: 530, minutesAway: 30, started: true },
+    { trip_id: 'next', depMin: 557, delayMin: 0, estimatedMin: 557, minutesAway: 57, started: false },
+  ];
+
+  test("re-times the selected bus's row to its own delay", () => {
+    const [mine] = overrideTripDelay(entries, 'mine', 7, 500);
+    assert.equal(mine.trip_id, 'mine');
+    assert.equal(mine.delayMin, 7);
+    assert.equal(mine.estimatedMin, 533);
+    assert.equal(mine.minutesAway, 33);
+  });
+
+  test('leaves every other row untouched', () => {
+    const result = overrideTripDelay(entries, 'mine', 7, 500);
+    assert.deepEqual(result[1], entries[1]);
+  });
+
+  test('is a no-op without a trip or a live delay', () => {
+    assert.equal(overrideTripDelay(entries, null, 7, 500), entries);
+    assert.equal(overrideTripDelay(entries, 'mine', null, 500), entries);
+  });
+
+  test('re-sorts when the new delay changes the order', () => {
+    const result = overrideTripDelay(entries, 'mine', 60, 500);
+    assert.deepEqual(result.map((e) => e.trip_id), ['next', 'mine']);
   });
 });

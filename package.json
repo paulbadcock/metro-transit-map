@@ -22,7 +22,8 @@
       "protobufjs-cli": {
         "glob": "^11.0.0"
       }
-    }
+    },
+    "markdown-it": "^14.3.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -119,5 +119,47 @@
     return delaySeconds != null ? Math.round(delaySeconds / 60) : null;
   }
 
-  return { computeNextBuses, buildDelayMap, getTripDelayMinutes };
+  // The vehicle immediately ahead of the selected one on the same route
+  // direction -- the "prior bus" a rider wants to see alongside their own
+  // to judge how the route is running. shapeIndexOf(v) returns how far along
+  // the route a vehicle is (null if unknown); "ahead" means a strictly
+  // larger index, and the nearest such vehicle wins. Returns its id, or null.
+  function pickBusAhead(vehicles, selectedId, shapeIndexOf) {
+    const sel = vehicles.find((v) => v.id === selectedId);
+    if (!sel) return null;
+    const selIdx = shapeIndexOf(sel);
+    if (selIdx == null) return null;
+
+    let bestId = null;
+    let bestIdx = Infinity;
+    for (const v of vehicles) {
+      if (v.id === selectedId || v.direction_id !== sel.direction_id) continue;
+      const idx = shapeIndexOf(v);
+      if (idx == null || idx <= selIdx) continue;
+      if (idx < bestIdx) {
+        bestIdx = idx;
+        bestId = v.id;
+      }
+    }
+    return bestId;
+  }
+
+  // Re-times one trip's row in a computeNextBuses result to a given delay.
+  // The feed's per-stop prediction for the selected bus can disagree with
+  // the delay the bus itself is carrying right now (its badge) -- and that
+  // feed has proven unreliable per stop -- so the row for the bus a rider
+  // is actually watching uses the same number as its badge instead of a
+  // second, conflicting one. No-op when there's no live delay to use.
+  function overrideTripDelay(entries, tripId, delayMin, nowMin) {
+    if (!tripId || delayMin == null) return entries;
+    return entries
+      .map((e) => {
+        if (e.trip_id !== tripId) return e;
+        const estimatedMin = e.depMin + delayMin;
+        return { ...e, delayMin, estimatedMin, minutesAway: estimatedMin - nowMin, started: true };
+      })
+      .sort((a, b) => a.minutesAway - b.minutesAway);
+  }
+
+  return { computeNextBuses, buildDelayMap, getTripDelayMinutes, pickBusAhead, overrideTripDelay };
 });
