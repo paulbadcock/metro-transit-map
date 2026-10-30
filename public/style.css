@@ -82,6 +82,19 @@ html, body {
   transition: opacity 0.2s, background 0.2s;
 }
 .banner-dismiss:hover { opacity: 1; background: rgba(255,255,255,0.1); }
+/* Map-side companion to the banner above: see detourNote in app.js. */
+.detour-map-note {
+  max-width: 230px;
+  padding: 6px 10px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .alert-item {
   display: flex;
   align-items: center;
