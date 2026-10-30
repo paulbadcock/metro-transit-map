@@ -26,12 +26,13 @@ export default [
         ...globals.browser,
         L: 'readonly',
         NextBuses: 'writable',
+        BasemapStyle: 'writable',
       },
     },
   },
   {
     // UMD wrapper: also runs under Node's CommonJS loader (see public/package.json).
-    files: ['public/next-buses.js'],
+    files: ['public/next-buses.js', 'public/basemap-style.js'],
     languageOptions: {
       globals: {
         ...globals.commonjs,
