@@ -161,5 +161,18 @@
       .sort((a, b) => a.minutesAway - b.minutesAway);
   }
 
-  return { computeNextBuses, buildDelayMap, getTripDelayMinutes, pickBusAhead, overrideTripDelay };
+  // Which tag, if any, a stop popup's departures-list row gets, relative to
+  // the selected bus (see computeStopTripContext in app.js): its own trip is
+  // "your bus", and the trips immediately before/after it at this stop are
+  // labelled too, so both neighbours read the same way whichever bus is
+  // selected. Returns null for any other trip.
+  function tripRowTag(tripId, context) {
+    if (!context || tripId == null) return null;
+    if (context.busTripId != null && tripId === context.busTripId) return "your bus";
+    if (context.before?.trip_id === tripId) return "bus before";
+    if (context.after?.trip_id === tripId) return "bus after";
+    return null;
+  }
+
+  return { computeNextBuses, buildDelayMap, getTripDelayMinutes, pickBusAhead, overrideTripDelay, tripRowTag };
 });

@@ -759,9 +759,8 @@ html, body {
   white-space: nowrap;
 }
 
-/* Marks the departure-list row that's the selected bus's own next visit to
-   this stop (the trip context's "after" entry), so it isn't also repeated
-   in its own box further down -- see buildStopPopup/buildTripContextHtml. */
+/* Marks the departure-list row that's the selected bus's own visit to this
+   stop -- see buildStopPopup. */
 .stop-popup-time-row.your-bus {
   background: rgba(255, 255, 255, 0.08);
   border-radius: 4px;
@@ -772,6 +771,13 @@ html, body {
 .your-bus-tag {
   color: var(--color-text);
   font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The trips just before/after the selected bus at this stop, labelled in
+   the departures list to match the "Bus before"/"Bus after" box above it. */
+.neighbour-bus-tag {
+  color: var(--color-text-muted);
   white-space: nowrap;
 }
 
