@@ -44,7 +44,7 @@ function captureWarnings(fn) {
 }
 
 test('unpatched filters warn on a missing numeric property (reproduces the bug)', () => {
-  const f = featureFilter(sampleStyle().layers[0].filter);
+  const f = featureFilter(sampleStyle().layers[0].filter, 'layers[0].filter');
   const warnings = captureWarnings(() => f.filter({ zoom: 14 }, feature({ network: 'ca-transcanada' })));
   assert.match(warnings.join('\n'), /Expected value to be of type number, but found null instead/);
 });
@@ -53,7 +53,7 @@ test('patched filters reject features missing the property, silently', () => {
   const layers = guardNullNumbers(sampleStyle()).layers.filter((l) => l.filter);
   const warnings = captureWarnings(() => {
     for (const layer of layers) {
-      assert.equal(featureFilter(layer.filter).filter({ zoom: 14 }, feature({})), false, layer.id);
+      assert.equal(featureFilter(layer.filter, `layers[${layer.id}].filter`).filter({ zoom: 14 }, feature({})), false, layer.id);
     }
   });
   assert.deepEqual(warnings, []);
@@ -61,7 +61,7 @@ test('patched filters reject features missing the property, silently', () => {
 
 test('patched filters still match features that have the property', () => {
   const [shield, poi, reversed] = guardNullNumbers(sampleStyle()).layers;
-  const ev = (layer, props) => featureFilter(layer.filter).filter({ zoom: 14 }, feature(props));
+  const ev = (layer, props) => featureFilter(layer.filter, `layers[${layer.id}].filter`).filter({ zoom: 14 }, feature(props));
   assert.equal(ev(shield, { ref_length: 3, network: 'ca-transcanada' }), true);
   assert.equal(ev(shield, { ref_length: 8, network: 'ca-transcanada' }), false);
   assert.equal(ev(poi, { rank: 10 }), true);
@@ -77,7 +77,11 @@ test('literal arrays are left untouched', () => {
 
 test('fill-extrusion heights fall back to 0 instead of warning', () => {
   const { paint } = guardNullNumbers(sampleStyle()).layers[4];
-  const height = createExpression(paint['fill-extrusion-height'], latest['paint_fill-extrusion']['fill-extrusion-height']);
+  const height = createExpression(
+    paint['fill-extrusion-height'],
+    'layers[building-3d].paint.fill-extrusion-height',
+    latest['paint_fill-extrusion']['fill-extrusion-height'],
+  );
   assert.equal(height.result, 'success');
   const warnings = captureWarnings(() => {
     assert.equal(height.value.evaluate({ zoom: 16 }, feature({})), 0);
