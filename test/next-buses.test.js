@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 // next-buses.js is a plain classic script in the browser (window.NextBuses),
 // not an ES module -- createRequire loads its CommonJS export path instead.
 const require = createRequire(import.meta.url);
-const { computeNextBuses, buildDelayMap, getTripDelayMinutes, pickBusAhead, overrideTripDelay } = require('../public/next-buses.js');
+const { computeNextBuses, buildDelayMap, getTripDelayMinutes, pickBusAhead, overrideTripDelay, tripRowTag } = require('../public/next-buses.js');
 
 describe('buildDelayMap', () => {
   test('keys updates by trip_id_stop_id', () => {
@@ -235,5 +235,32 @@ describe('overrideTripDelay', () => {
   test('re-sorts when the new delay changes the order', () => {
     const result = overrideTripDelay(entries, 'mine', 60, 500);
     assert.deepEqual(result.map((e) => e.trip_id), ['next', 'mine']);
+  });
+});
+
+describe('tripRowTag', () => {
+  const context = {
+    busTripId: 'mine',
+    before: { trip_id: 'earlier' },
+    after: { trip_id: 'later' },
+  };
+
+  test('tags the selected bus and both neighbours', () => {
+    assert.equal(tripRowTag('mine', context), 'your bus');
+    assert.equal(tripRowTag('earlier', context), 'bus before');
+    assert.equal(tripRowTag('later', context), 'bus after');
+    assert.equal(tripRowTag('other', context), null);
+  });
+
+  // Selecting the earliest bus of the day leaves no "before" -- the next
+  // bus must still be tagged (it used to vanish from the popup entirely).
+  test('still tags the next bus when there is no bus before', () => {
+    const first = { busTripId: 'mine', before: null, after: { trip_id: 'later' } };
+    assert.equal(tripRowTag('later', first), 'bus after');
+  });
+
+  test('returns null with no context or no trip id', () => {
+    assert.equal(tripRowTag('mine', null), null);
+    assert.equal(tripRowTag(null, context), null);
   });
 });

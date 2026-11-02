@@ -778,22 +778,19 @@ map.on("zoomend", () => {
 
 // Times pane is `null` while loading, an array (possibly empty) once fetched.
 // tripContext is `null` while loading or when there's nothing to show (see
-// computeStopTripContext): busTripId is the selected bus's own trip, so it
-// can be tagged "your bus" if its own visit to this stop is still upcoming
-// and therefore present in the departures list below; before/after are the
-// scheduled trips immediately adjacent to it, for context, not the rider's
-// own bus. "after" is frequently the same trip as the departures list's
-// first row too (typically once the rider's own bus has already passed this
-// stop, so it's the soonest trip left) -- rather than showing it twice,
-// that row is marked in place in the list, and "after" only falls back to
-// its own context row here if it didn't make the list (e.g. too far out for
-// the list's limit). That in-list mark is deliberately not "your bus" --
-// it's the bus *after* yours, not yours.
+// computeStopTripContext): busTripId is the selected bus's own trip; before/
+// after are the scheduled trips immediately adjacent to it at this stop.
+// Rows in the departures list are tagged "your bus" / "bus before" / "bus
+// after" (NextBuses.tripRowTag), and the before/after box above the list
+// always shows both neighbours whenever they exist. That box used to drop
+// "Bus after" whenever that trip also appeared in the list -- back when the
+// list tagged it in place -- but the in-list tag later moved to the rider's
+// own trip, so selecting the earlier of two buses showed no next bus at all
+// while selecting the later one still showed "Bus before".
 function buildStopPopup(stopName, stopId, upcoming, tripContext) {
   const header = `<strong>${escapeHtml(stopName)}</strong><br>Stop #${escapeHtml(stopId)}`;
 
   let timesHtml;
-  let afterShownInList = false;
   if (upcoming === null) {
     timesHtml = `<div class="stop-popup-times empty-state">Loading times…</div>`;
   } else if (upcoming.length === 0) {
@@ -808,21 +805,21 @@ function buildStopPopup(stopName, stopId, upcoming, tripContext) {
         if (s.delayMin > 1) delayHtml = `<span class="delay late">+${s.delayMin} min</span>`;
         else if (s.delayMin < -1) delayHtml = `<span class="delay early">${s.delayMin} min</span>`;
 
-        const isYourBus = tripContext?.busTripId != null && tripContext.busTripId === s.trip_id;
-        if (tripContext?.after?.trip_id === s.trip_id) afterShownInList = true;
+        const tag = NextBuses.tripRowTag(s.trip_id, tripContext);
+        const isYourBus = tag === "your bus";
 
         return `
           <div class="stop-popup-time-row${isYourBus ? " your-bus" : ""}">
             <span class="stop-popup-time">${formatTime12(minutesToTimeString(s.estimatedMin))}</span>
             ${delayHtml}
             <span class="stop-popup-headsign">${escapeHtml(s.trip_headsign || "")}</span>
-            ${isYourBus ? `<span class="your-bus-tag">your bus</span>` : ""}
+            ${tag ? `<span class="${isYourBus ? "your-bus-tag" : "neighbour-bus-tag"}">${tag}</span>` : ""}
           </div>`;
       })
       .join("")}</div>`;
   }
 
-  const contextHtml = buildTripContextHtml(tripContext, afterShownInList);
+  const contextHtml = buildTripContextHtml(tripContext);
 
   return `${header}${contextHtml}${timesHtml}`;
 }
@@ -851,16 +848,14 @@ function buildTripContextRow(label, s) {
     </div>`;
 }
 
-function buildTripContextHtml(context, afterShownInList) {
+function buildTripContextHtml(context) {
   if (!context) return "";
   const rows = [];
   // Once the selected bus has already passed this stop, the trip that ran
-  // just before it is old news -- only the next one still matters.
+  // just before it is old news -- only the next one still matters
+  // (computeStopTripContext nulls `before` in that case).
   if (context.before) rows.push(buildTripContextRow("Bus before", context.before));
-  // The "after" trip is normally tagged in place in the departures list
-  // instead (see buildStopPopup) -- only give it its own row here if it
-  // didn't appear there.
-  if (context.after && !afterShownInList) rows.push(buildTripContextRow("Bus after", context.after));
+  if (context.after) rows.push(buildTripContextRow("Bus after", context.after));
   if (rows.length === 0) return "";
   return `<div class="stop-trip-context">${rows.join("")}</div>`;
 }
