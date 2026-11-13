@@ -27,7 +27,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@maplibre/maplibre-gl-style-spec": "^26.5.0",
+    "@maplibre/maplibre-gl-style-spec": "^26.5.1",
     "eslint": "^10.14.0",
     "globals": "^17.13.0"
   }
