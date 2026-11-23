@@ -13,7 +13,7 @@
   "dependencies": {
     "adm-zip": "^0.6.0",
     "express": "^5.3.0",
-    "gtfs-realtime-bindings": "^2.1.0",
+    "gtfs-realtime-bindings": "^3.0.0",
     "helmet": "^8.3.0",
     "node-fetch": "^3.3.2"
   },
